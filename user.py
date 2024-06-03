@@ -1,5 +1,6 @@
 import os
 import sys
+from data_classes import Event
 
 from bcc import BPF
 import threading
@@ -34,7 +35,7 @@ for probe_point in probe_points:
     def callback(ctx, data, size):
         global output
         event = bpf_prog["buffer"].event(data)
-        output += (probe_point, event.time, event.pid, event.tgid)
+        output.append(Event(probe_point, event.time, event.pid, event.tgid))
 
     bpf_prog["buffer"].open_ring_buffer(callback)
 
@@ -55,10 +56,10 @@ for bpf_prog in programs.values():
 
 print("Main loop exited, printing output.", file=sys.stderr)
 
-output_sorted = sorted(output, key=lambda x: x[1])  # sort by 2nd key in tuple (timestamp)
+output_sorted = sorted(output)  # sort by timestamp
 
 print("probe_point\ttime\tpid\ttgid\n")
-for probe_point, time, pid, tgid in output_sorted:
-    print("%s\t%lu\t%u\t%u\n" % (probe_point, time, pid, tgid))
+for event in output_sorted:
+    print("%s\t%lu\t%u\t%u\n" % (event.probe_point, event.timestamp, event.pid, event.tgid))
 
 exit(0)
