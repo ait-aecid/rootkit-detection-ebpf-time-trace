@@ -69,12 +69,9 @@ thread.start()
 print(f"finished {finished}", file=sys.stderr)
 
 while not finished:
-    print("collecting...", file=sys.stderr)
     try:
-        print("collection loop head", file=sys.stderr)
         for probe_point, bpf_prog in programs.items():
             bpf_prog.ring_buffer_poll(30)  # TODO: think about the timeouts
-        print("collected 1x", file=sys.stderr)
     except KeyboardInterrupt:
         break
 
