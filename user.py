@@ -1,9 +1,12 @@
 import os
 import sys
+from time import sleep
+
 from data_classes import Event
 
 from bcc import BPF
 import threading
+import subprocess
 
 probe_points = [
     #"do_sys_openat2",
@@ -41,12 +44,41 @@ for probe_point in probe_points:
 
 print("BPF programs injected, buffering output...", file=sys.stderr)
 
-while True:
+finished = False
+detection_PID = 0
+
+
+def run_detection() -> None:
+    sleep(2)
+    global finished
+    global detection_PID
+    process = subprocess.Popen("./getpid_ls", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = process.communicate()
+    stdout_str = stdout.decode('utf-8')
+    #print(stdout_str, file=sys.stderr)
+    stderr_str = stderr.decode('utf-8')
+    detection_PID = int((stdout_str.split("\n")[0])[4:])
+    print("detection_PID: %i" % detection_PID, file=sys.stderr)
+    sleep(5)
+    finished = True
+
+
+thread = threading.Thread(target=run_detection())
+thread.start()
+
+print(f"finished {finished}", file=sys.stderr)
+
+while not finished:
+    print("collecting...", file=sys.stderr)
     try:
+        print("collection loop head", file=sys.stderr)
         for probe_point, bpf_prog in programs.items():
             bpf_prog.ring_buffer_poll(30)  # TODO: think about the timeouts
+        print("collected 1x", file=sys.stderr)
     except KeyboardInterrupt:
         break
+
+thread.join()
 
 # detach all bpf probes
 for bpf_prog in programs.values():
@@ -56,10 +88,12 @@ for bpf_prog in programs.values():
 
 print("Main loop exited, printing output.", file=sys.stderr)
 
-output_sorted = sorted(output)  # sort by timestamp
+output = sorted(output)  # sort by timestamp
+
+#output = [event for event in output if event.pid == detection_PID]
 
 print("probe_point\ttime\tpid\ttgid\n")
-for event in output_sorted:
+for event in output:
     print("%s\t%lu\t%u\t%u\n" % (event.probe_point, event.timestamp, event.pid, event.tgid))
 
 exit(0)
