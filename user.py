@@ -63,7 +63,7 @@ def run_detection() -> None:
     finished = True
 
 
-thread = threading.Thread(target=run_detection())
+thread = threading.Thread(target=run_detection)
 thread.start()
 
 print(f"finished {finished}", file=sys.stderr)
