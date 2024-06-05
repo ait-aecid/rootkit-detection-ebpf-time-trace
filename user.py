@@ -92,8 +92,30 @@ output = sorted(output)  # sort by timestamp
 
 #output = [event for event in output if event.pid == detection_PID]
 
-print("probe_point\ttime\tpid\ttgid\n")
+
+def print_output():
+    print("probe_point\ttime\tpid\ttgid\n")
+    for event in output:
+        print("%s\t%lu\t%u\t%u\n" % (event.probe_point, event.timestamp, event.pid, event.tgid))
+print_output()
+
+
+import matplotlib.pyplot as plt
+
+# Create the visualization
+x = []  # Scatterplot X values
+y = []  # Scatterplot Y Values
+
+# Loop over the data a second time
 for event in output:
-    print("%s\t%lu\t%u\t%u\n" % (event.probe_point, event.timestamp, event.pid, event.tgid))
+    x.append(event.timestamp)
+    y.append(event.probe_point)
+
+plt.figure(figsize=(14,4))
+plt.title("Timeline Plot")
+plt.xlim(output[0].timestamp, output[-1].timestamp)
+plt.scatter(x, y)
+
+plt.savefig("timeline.svg")
 
 exit(0)
