@@ -80,11 +80,12 @@ def run_detection() -> None:
 def run_detection_Yx(Y: int):
     global finished
     for i in range(Y):
+        print(f'Iteration {i}...', file=sys.stderr)
         run_detection()
     finished = True
 
 
-thread = threading.Thread(target=run_detection_Yx, args=[1])
+thread = threading.Thread(target=run_detection_Yx, args=[1000])
 thread.start()
 
 print(f"finished {finished}", file=sys.stderr)
@@ -104,7 +105,7 @@ for bpf_prog in programs.values():
 
 # It will be fun to write all the logged data somewhere, without creating syscalls...
 
-print("Main loop exited, printing output.", file=sys.stderr)
+print("Main loop exited, saving output.", file=sys.stderr)
 
 output = sorted(output)  # sort by timestamp
 
@@ -118,7 +119,6 @@ def print_output():
     print("probe_point\t\t\t\ttime\t\t\t\tpid\t\t\t\ttgid\n")
     for event in output:
         print("%s\t\t\t\t%lu\t\t\t\t%u\t\t\t\t%u" % (event.probe_point, event.timestamp, event.pid, event.tgid))
-print_output()
 
 import json
 from datetime import datetime
