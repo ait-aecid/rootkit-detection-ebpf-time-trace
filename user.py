@@ -19,7 +19,9 @@ probe_points = [
     "apparmor_file_permission",
     "dcache_readdir",
     "filldir64",
-    "verify_dirent_name"
+    "verify_dirent_name",
+    "touch_atime",
+    "atime_needs_update",
 ]
 
 stop = False
@@ -29,18 +31,34 @@ output = []
 
 for probe_point in probe_points:
     program_src = open("kernel.c").read()
-    program_src.replace("buffer", "buffer-" + probe_point)
-    program_src.replace("12345", str(os.getpid()))
-    bpf_prog = BPF(text=program_src)
-    bpf_prog.attach_kprobe(event=probe_point, fn_name="foo")
-    programs[probe_point] = bpf_prog
+    
+    program_enter_src = program_src
+    program_enter_src.replace("buffer", "buffer-" + probe_point + "-enter")
+    program_enter_src.replace("12345", str(os.getpid()))
+    bpf_enter_prog = BPF(text=program_enter_src)
+    bpf_enter_prog.attach_kprobe(event=probe_point, fn_name="foo")
+    programs[probe_point + "-enter"] = bpf_enter_prog
 
     def callback(ctx, data, size):
         global output
-        event = bpf_prog["buffer"].event(data)
+        event = bpf_enter_prog["buffer"].event(data)
         output.append(Event(probe_point, event.time, event.pid, event.tgid))
 
-    bpf_prog["buffer"].open_ring_buffer(callback)
+    bpf_enter_prog["buffer"].open_ring_buffer(callback)
+
+    program_return_src = program_src
+    program_return_src.replace("buffer", "buffer-" + probe_point + "-return")
+    program_return_src.replace("12345", str(os.getpid()))
+    bpf_return_prog = BPF(text=program_return_src)
+    bpf_return_prog.attach_kretprobe(event=probe_point, fn_name="foo")
+    programs[probe_point + "-return"] = bpf_return_prog
+
+    def callback(ctx, data, size):
+        global output
+        event = bpf_return_prog["buffer"].event(data)
+        output.append(Event(probe_point, event.time, event.pid, event.tgid))
+
+    bpf_return_prog["buffer"].open_ring_buffer(callback)
 
 print("BPF programs injected, buffering output...", file=sys.stderr)
 
@@ -87,13 +105,16 @@ print("Main loop exited, printing output.", file=sys.stderr)
 
 output = sorted(output)  # sort by timestamp
 
-#output = [event for event in output if event.pid == detection_PID]
+output = [event for event in output if event.pid == detection_PID]
 
+first = output[0].timestamp
+for event in output:
+    event.timestamp -= first
 
 def print_output():
-    print("probe_point\ttime\tpid\ttgid\n")
+    print("probe_point\t\t\t\ttime\t\t\t\tpid\t\t\t\ttgid\n")
     for event in output:
-        print("%s\t%lu\t%u\t%u\n" % (event.probe_point, event.timestamp, event.pid, event.tgid))
+        print("%s\t\t\t\t%lu\t\t\t\t%u\t\t\t\t%u" % (event.probe_point, event.timestamp, event.pid, event.tgid))
 print_output()
 
 
