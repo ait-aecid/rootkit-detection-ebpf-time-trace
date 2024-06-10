@@ -63,25 +63,28 @@ for probe_point in probe_points:
 print("BPF programs injected, buffering output...", file=sys.stderr)
 
 finished = False
-detection_PID = 0
+detection_PIDs = []
 
 
 def run_detection() -> None:
-    sleep(2)
-    global finished
-    global detection_PID
+    global detection_PIDs
     process = subprocess.Popen("./getpid_ls", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = process.communicate()
     stdout_str = stdout.decode('utf-8')
     #print(stdout_str, file=sys.stderr)
     stderr_str = stderr.decode('utf-8')
     detection_PID = int((stdout_str.split("\n")[0])[4:])
+    detection_PIDs.append(detection_PID)
     print("detection_PID: %i" % detection_PID, file=sys.stderr)
-    sleep(5)
+
+def run_detection_Yx(Y: int):
+    global finished
+    for i in range(Y):
+        run_detection()
     finished = True
 
 
-thread = threading.Thread(target=run_detection)
+thread = threading.Thread(target=run_detection_Yx, args=[1])
 thread.start()
 
 print(f"finished {finished}", file=sys.stderr)
@@ -105,7 +108,7 @@ print("Main loop exited, printing output.", file=sys.stderr)
 
 output = sorted(output)  # sort by timestamp
 
-output = [event for event in output if event.pid == detection_PID]
+output = [event for event in output if event.pid in detection_PIDs]
 
 first = output[0].timestamp
 for event in output:
@@ -117,23 +120,11 @@ def print_output():
         print("%s\t\t\t\t%lu\t\t\t\t%u\t\t\t\t%u" % (event.probe_point, event.timestamp, event.pid, event.tgid))
 print_output()
 
+import json
+from datetime import datetime
 
-import matplotlib.pyplot as plt
-
-# Create the visualization
-x = []  # Scatterplot X values
-y = []  # Scatterplot Y Values
-
-# Loop over the data a second time
-for event in output:
-    x.append(event.timestamp)
-    y.append(event.probe_point)
-
-plt.figure(figsize=(14,4))
-plt.title("Timeline Plot")
-plt.xlim(output[0].timestamp, output[-1].timestamp)
-plt.scatter(x, y)
-
-plt.savefig("timeline.svg")
+filename = "output" + datetime.now().isoformat() + ".json"
+with open(filename, 'w') as file:
+    file.write(json.dumps(output, default=vars))
 
 exit(0)

@@ -16,3 +16,6 @@ class Event:
 
     def __ge__(self, other: 'Event') -> bool:
         return self.timestamp >= other.timestamp
+
+    def __getitem__(self, item):
+        return self[item]
