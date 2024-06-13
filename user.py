@@ -15,13 +15,13 @@ probe_points = [
     "__fdget_pos",
     "__fget_light",
     "iterate_dir",
-    "security_file_permission",
-    "apparmor_file_permission",
+    #"security_file_permission",
+    #"apparmor_file_permission",
     "dcache_readdir",
-    "filldir64",
-    "verify_dirent_name",
-    "touch_atime",
-    "atime_needs_update",
+    "filldir64"#,
+    #"verify_dirent_name",
+    #"touch_atime",
+    #"atime_needs_update",
 ]
 
 stop = False
@@ -93,7 +93,8 @@ print(f"finished {finished}", file=sys.stderr)
 while not finished:
     try:
         for probe_point, bpf_prog in programs.items():
-            bpf_prog.ring_buffer_poll(30)  # TODO: think about the timeouts
+            bpf_prog.ring_buffer_poll()  # TODO: think about the timeouts
+        sleep(0.0001)  # sleep for 0.1 millisecond, then check the buffers again
     except KeyboardInterrupt:
         break
 
@@ -115,10 +116,12 @@ first = output[0].timestamp
 for event in output:
     event.timestamp -= first
 
+
 def print_output():
     print("probe_point\t\t\t\ttime\t\t\t\tpid\t\t\t\ttgid\n")
     for event in output:
         print("%s\t\t\t\t%lu\t\t\t\t%u\t\t\t\t%u" % (event.probe_point, event.timestamp, event.pid, event.tgid))
+
 
 import json
 from datetime import datetime

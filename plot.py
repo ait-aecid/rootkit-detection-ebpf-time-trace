@@ -42,7 +42,7 @@ def unique_vals(lst: list) -> int:
 def make_histogram(name: str, values: [int]) -> None:
     plt.hist(values, bins=unique_vals(values))
     plt.title(name)
-    #plt.yscale('log')
+    plt.yscale('log')
     plt.savefig("distribution_" + file_date + "_" + name + ".svg")
     print(name + " saved")
 
