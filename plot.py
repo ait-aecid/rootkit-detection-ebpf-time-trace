@@ -1,5 +1,6 @@
 import json
 import matplotlib.pyplot as plt
+from multiprocessing import Process
 import os
 import re
 import sys
@@ -22,21 +23,36 @@ file_date = filename.replace("output", "").replace(".json", "")
 
 intervals = {}
 for i in range(len(events) - 1):
-    type_name = events[i].probe_point + ":" + events[i+1].probe_point
-    try:
-        intervals[type_name]
-    except KeyError:
-        intervals[type_name] = []
-    intervals[type_name].append(events[i+1].timestamp - events[i].timestamp)
+    event_a = events[i]
+    event_b = events[i+1]
+    if event_a.pid == event_b.pid and event_a.tgid == event_b.tgid:
+        type_name = event_a.probe_point + ":" + event_b.probe_point
+        try:
+            intervals[type_name]
+        except KeyError:
+            intervals[type_name] = []
+        intervals[type_name].append(event_b.timestamp - event_a.timestamp)
+
 
 def unique_vals(lst: list) -> int:
     import numpy as np
-    unique_values, value_counts = np.unique(lst, return_counts=True)
-    return len(unique_values)
+    return np.unique(list)
 
-for name, values in intervals.items():
-    print(name + "...")
+
+def make_histogram(name: str, values: [int]) -> None:
     plt.hist(values, bins=unique_vals(values))
     plt.title(name)
-    plt.ticklabel_format(style='plain', axis='both')
+    #plt.yscale('log')
     plt.savefig("distribution_" + file_date + "_" + name + ".svg")
+    print(name + " saved")
+
+
+plot_processes = []
+
+for name, values in intervals.items():
+    worker = Process(target=make_histogram, args=[name, values])
+    worker.start()
+    plot_processes.append(worker)
+
+for worker in plot_processes:
+    worker.join()
