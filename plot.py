@@ -35,8 +35,13 @@ for i in range(len(events) - 1):
 
 
 def unique_vals(lst: list) -> int:
-    import numpy as np
-    return np.unique(list)
+    values = []
+    unique = 0
+    for elem in lst:
+        if elem not in values:
+            values.append(elem)
+            unique += 1
+    return unique
 
 
 def make_histogram(name: str, values: [int]) -> None:
