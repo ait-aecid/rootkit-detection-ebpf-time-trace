@@ -21,11 +21,19 @@ with open(filename, 'r') as file:
 
 file_date = filename.replace("output", "").replace(".json", "")
 
+processes = {}
+for event in events:
+    try:
+        processes[event.pid]
+    except KeyError:
+        processes[event.pid] = []
+    processes[event.pid].append(event)
+
 intervals = {}
-for i in range(len(events) - 1):
-    event_a = events[i]
-    event_b = events[i+1]
-    if event_a.pid == event_b.pid and event_a.tgid == event_b.tgid:
+for pid in processes:
+    for i in range(len(processes[pid]) - 1):
+        event_a = processes[pid][i]
+        event_b = processes[pid][i+1]
         type_name = event_a.probe_point + ":" + event_b.probe_point
         try:
             intervals[type_name]
