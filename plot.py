@@ -52,6 +52,11 @@ def unique_vals(lst: list) -> int:
     return unique
 
 
+plt.barh([x for x in intervals.keys()], [len(x) for x in intervals.values()])
+plt.tight_layout()
+plt.savefig("interval_distribution_" + file_date + ".svg")
+
+
 def make_histogram(name: str, values: [int]) -> None:
     plt.hist(values, bins=unique_vals(values))
     plt.title(name)
