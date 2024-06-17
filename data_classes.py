@@ -19,3 +19,28 @@ class Event:
 
     def __getitem__(self, item):
         return self[item]
+
+
+class Interval:
+    def __init__(self, time: int, event_a: Event, event_b: Event, pid: int, tgid: int):
+        self.time = time
+        self.event_a = event_a
+        self.event_b = event_b
+        self.pid = pid
+        self.tgid = tgid
+
+        def __lt__(self, other: 'Interval') -> bool:
+            return self.time < other.time
+
+        def __le__(self, other: 'Interval') -> bool:
+            return self.time <= other.time
+
+        def __gt__(self, other: 'Interval') -> bool:
+            return self.time > other.time
+
+        def __ge__(self, other: 'Interval') -> bool:
+            return self.time >= other.time
+
+        def __getitem__(self, item):
+            return self[item]
+

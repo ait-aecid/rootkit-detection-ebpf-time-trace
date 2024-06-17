@@ -4,7 +4,7 @@ from multiprocessing import Process
 import os
 import re
 import sys
-from data_classes import Event
+from data_classes import Event, Interval
 
 
 def __unique_vals__(lst: list) -> int:
@@ -55,7 +55,7 @@ class Plot:
                     self.intervals[type_name]
                 except KeyError:
                     self.intervals[type_name] = []
-                self.intervals[type_name].append(event_b.timestamp - event_a.timestamp)
+                self.intervals[type_name].append(Interval(event_b.timestamp - event_a.timestamp, event_a, event_b, pid, event_a.tgid))
 
     def interval_type_counts(self):
         plt.barh([x for x in self.intervals.keys()], [len(x) for x in self.intervals.values()])
@@ -76,7 +76,7 @@ class Plot:
         plot_processes = []
 
         for name, values in self.intervals.items():
-            worker = Process(target=make_histogram, args=[name, values])
+            worker = Process(target=make_histogram, args=[name, [x.time for x in values]])
             worker.start()
             plot_processes.append(worker)
 
