@@ -82,3 +82,28 @@ class Plot:
 
         for worker in plot_processes:
             worker.join()
+
+    def interval_types_per_run(self):
+        # 16
+
+        fig, axs = plt.subplots(4, 4)
+
+        intervals_filtered = {}
+        for name, intervals in self.intervals.items():
+            for elem in intervals:
+                pid = elem.pid
+                try:
+                    intervals_filtered[pid]
+                except KeyError:
+                    intervals_filtered[pid] = {}
+                try:
+                    intervals_filtered[pid][name]
+                except KeyError:
+                    intervals_filtered[pid][name] = 0
+                intervals_filtered[pid][name] += 1
+
+        for i in range(16):
+            axs[int(i/4), i % 4].barh(list(intervals_filtered[list(self.processes.keys())[i]].keys()),
+                                      intervals_filtered[list(self.processes.keys())[i]].values())
+        fig.savefig("interval_types_per_run_" + self.file_date + ".svg")
+        fig.clf()
