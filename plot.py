@@ -31,6 +31,7 @@ class Plot:
             # get the most recent output file...
             files = [f for f in os.listdir('.') if os.path.isfile(os.path.join('.', f))]
             outputs = [file for file in files if re.match(r'^output.*\.json$', file)]
+            outputs.sort()
             filename = outputs.pop()
 
         with open(filename, 'r') as file:

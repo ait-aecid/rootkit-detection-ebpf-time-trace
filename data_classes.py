@@ -55,7 +55,7 @@ class Experiment:
         return self[item]
 
 
-def experiment_from_json(input: any) -> Experiment:
+def experiment_from_json(input: dict) -> Experiment:
     return Experiment(executable=input["executable"],
                       runs=int(input["runs"]),
                       events=[Event(**elem) for elem in input["events"]])
