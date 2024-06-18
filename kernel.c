@@ -1,4 +1,4 @@
-BPF_RINGBUF_OUTPUT(buffer, 1 << 6);  // TODO: does this buffer size make sense?
+BPF_RINGBUF_OUTPUT(buffer, 1 << 10);
 
 struct event {
     unsigned long time;

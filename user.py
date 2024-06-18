@@ -30,7 +30,7 @@ output = []
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--runs", "-r", default=100, type=int, help="Number of times to run the experiment.")
-parser.add_argument("--executable", "-e", default="./getpid_opendir_readdir", type=str, help="Provide an executable for the experiment.")
+parser.add_argument("--executable", "-e", default="./getpid_opendir_readdir_proc", type=str, help="Provide an executable for the experiment.")
 
 args = parser.parse_args()
 
@@ -100,8 +100,8 @@ print(f"finished {finished}", file=sys.stderr)
 
 while not finished:
     for probe_point, bpf_prog in programs.items():
-        bpf_prog.ring_buffer_poll(30)
-    sleep(0.003)  # sleep for 30 milliseconds, then check the buffers again
+        bpf_prog.ring_buffer_poll(5)
+    sleep(0.0005)  # sleep for 5 milliseconds, then check the buffers again
 
 
 thread.join()

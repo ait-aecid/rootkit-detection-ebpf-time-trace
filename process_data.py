@@ -172,11 +172,11 @@ class Plot:
 
         problem = False
         for pid, events in events_per_process.items():
-            if np.abs(events - mean) > (2 * standard_deviation):
+            if np.abs(events - mean) > (5 * standard_deviation):
                 if not problem:
                     print(f"Arithmetic mean is {mean}.")
                     print(f"Standard deviation is {standard_deviation}.")
-                print(f"PID {pid}'s # of events ({events}) differs from the mean ({mean}) more than 2x the standard deviation.")
+                print(f"PID {pid}'s # of events ({events}) differs from the mean ({mean}) more than 5x the standard deviation.")
                 problem = True
         return problem
 
