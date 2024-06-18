@@ -91,12 +91,10 @@ thread.start()
 print(f"finished {finished}", file=sys.stderr)
 
 while not finished:
-    try:
-        for probe_point, bpf_prog in programs.items():
-            bpf_prog.ring_buffer_poll()  # TODO: think about the timeouts
-        sleep(0.0001)  # sleep for 0.1 millisecond, then check the buffers again
-    except KeyboardInterrupt:
-        break
+    for probe_point, bpf_prog in programs.items():
+        bpf_prog.ring_buffer_poll(30)
+    sleep(0.003)  # sleep for 30 milliseconds, then check the buffers again
+
 
 thread.join()
 
