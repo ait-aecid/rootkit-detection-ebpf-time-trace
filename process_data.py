@@ -4,6 +4,7 @@ from multiprocessing import Process
 import os
 import re
 import sys
+import numpy as np
 from data_classes import Event, Interval, experiment_from_json
 
 
@@ -22,6 +23,8 @@ class Plot:
     processes = {}
     intervals = {}
     file_date = ""
+    experiment = None
+    events = []
 
     def __init__(self, args):
         self.args = args
@@ -37,6 +40,8 @@ class Plot:
         with open(filename, 'r') as file:
             json_obj = json.load(file)
             experiment = experiment_from_json(json_obj)
+            self.experiment = experiment
+            self.events = experiment.events
 
         self.file_date = filename.replace("output", "").replace(".json", "")
 
@@ -116,7 +121,6 @@ class Plot:
                 return dictionary[outer][inner]
             except KeyError:
                 return 0
-        import numpy as np
         intervals_filtered = {}
         for name, intervals in self.intervals.items():
             for elem in intervals:
@@ -150,9 +154,35 @@ class Plot:
         ax.set_xticklabels(groups, rotation=90)
         plt.tight_layout()
 
-        plt.savefig("interval_types_per_run2_" + self.file_date + ".svg")
+        filename = "interval_types_per_run2_" + self.file_date + ".svg"
+        plt.savefig(filename)
         plt.clf()
 
     def print_num_processes(self):
         print("# of PIDs found in dataset: " + str(len(self.processes)))
 
+    def check_events_per_process(self) -> bool:
+        events_per_process = {}
+        for pid in self.processes:
+            num_events = len([x for x in self.events if x.pid == pid])
+            #print(f"In {pid} are {num_events} events.")#
+            events_per_process[pid] = num_events
+        mean = np.mean(list(events_per_process.values()))
+        standard_deviation = np.std(list(events_per_process.values()))
+
+        problem = False
+        for pid, events in events_per_process.items():
+            if np.abs(events - mean) > (2 * standard_deviation):
+                if not problem:
+                    print(f"Arithmetic mean is {mean}.")
+                    print(f"Standard deviation is {standard_deviation}.")
+                print(f"PID {pid}'s # of events ({events}) differs from the mean ({mean}) more than 2x the standard deviation.")
+                problem = True
+        return problem
+
+    def sanity_check(self):
+        problem = self.check_events_per_process()  # or self.check*
+        if problem:
+            print("#############################################################")
+            print("THIS DATASET DID NOT PASS THE SANITY CHECK! IT MAY MISS DATA!")
+            print("#############################################################")
