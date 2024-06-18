@@ -44,3 +44,18 @@ class Interval:
         def __getitem__(self, item):
             return self[item]
 
+
+class Experiment:
+    def __init__(self, executable: str, runs: int, events: [Event]):
+        self.executable: str = executable
+        self.runs: int = runs
+        self.events: [Event] = events
+
+    def __getitem__(self, item):
+        return self[item]
+
+
+def experiment_from_json(input: any) -> Experiment:
+    return Experiment(executable=input["executable"],
+                      runs=int(input["runs"]),
+                      events=[Event(**elem) for elem in input["events"]])

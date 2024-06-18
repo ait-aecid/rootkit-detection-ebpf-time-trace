@@ -4,7 +4,7 @@ from multiprocessing import Process
 import os
 import re
 import sys
-from data_classes import Event, Interval
+from data_classes import Event, Interval, experiment_from_json
 
 
 def __unique_vals__(lst: list) -> int:
@@ -35,11 +35,11 @@ class Plot:
 
         with open(filename, 'r') as file:
             json_obj = json.load(file)
-            events = [Event(**elem) for elem in json_obj]
+            experiment = experiment_from_json(json_obj)
 
         self.file_date = filename.replace("output", "").replace(".json", "")
 
-        for event in events:
+        for event in experiment.events:
             try:
                 self.processes[event.pid]
             except KeyError:

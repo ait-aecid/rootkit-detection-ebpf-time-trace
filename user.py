@@ -5,7 +5,7 @@ import argparse
 import threading
 import subprocess
 from time import sleep
-from data_classes import Event
+from data_classes import Event, Experiment
 
 probe_points = [
     #"do_sys_openat2",
@@ -33,6 +33,8 @@ parser.add_argument("--runs", "-r", default=100, type=int, help="Number of times
 parser.add_argument("--executable", "-e", default="./getpid_opendir_readdir", type=str, help="Provide an executable for the experiment.")
 
 args = parser.parse_args()
+
+experiment = Experiment(args.executable, args.runs, [])
 
 for probe_point in probe_points:
     program_src = open("kernel.c").read()
@@ -65,7 +67,7 @@ for probe_point in probe_points:
 
     bpf_return_prog["buffer"].open_ring_buffer(callback)
 
-print("BPF programs injected, buffering output...", file=sys.stderr)
+print(f"Running experiment with {experiment.executable} for {experiment.runs} times.", file=sys.stderr)
 
 finished = False
 detection_PIDs = []
@@ -80,12 +82,13 @@ def run_detection() -> None:
     stderr_str = stderr.decode('utf-8')
     detection_PID = int((stdout_str.split("\n")[0])[4:])
     detection_PIDs.append(detection_PID)
-    #print("detection_PID: %i" % detection_PID, file=sys.stderr)
+    print("detection_PID: %i" % detection_PID, file=sys.stderr)
+    process.wait()
 
 def run_detection_Yx(Y: int):
     global finished
     for i in range(Y):
-        #print(f'Iteration {i}...', file=sys.stderr)
+        print(f'Iteration {i}...', file=sys.stderr)
         run_detection()
     finished = True
 
@@ -115,10 +118,12 @@ output = sorted(output)  # sort by timestamp
 
 output = [event for event in output if event.pid in detection_PIDs]
 
+# normalize time
 first = output[0].timestamp
 for event in output:
     event.timestamp -= first
 
+experiment.events = output
 
 def print_output():
     print("probe_point\t\t\t\ttime\t\t\t\tpid\t\t\t\ttgid\n")
@@ -131,6 +136,15 @@ from datetime import datetime
 
 filename = "output" + datetime.now().isoformat() + ".json"
 with open(filename, 'w') as file:
-    file.write(json.dumps(output, default=vars))
+    file.write(json.dumps(experiment, default=vars))
+
+print(f"Saved data to %s" % filename)
+
+# print size of saved file
+du = subprocess.Popen(["du", "-h", filename], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+stdout, stderr = du.communicate()
+stdout_str = stdout.decode('utf-8')
+print(stdout_str, file=sys.stderr, end='')
+du.wait()
 
 exit(0)
