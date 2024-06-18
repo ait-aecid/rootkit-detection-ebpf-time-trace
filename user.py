@@ -1,12 +1,11 @@
+from bcc import BPF
 import os
 import sys
-from time import sleep
-
-from data_classes import Event
-
-from bcc import BPF
+import argparse
 import threading
 import subprocess
+from time import sleep
+from data_classes import Event
 
 probe_points = [
     #"do_sys_openat2",
@@ -28,6 +27,12 @@ stop = False
 threads = []
 programs = {}
 output = []
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--runs", "-r", default=100, type=int, help="Number of times to run the experiment.")
+parser.add_argument("--executable", "-e", default="./getpid_opendir_readdir", type=str, help="Provide an executable for the experiment.")
+
+args = parser.parse_args()
 
 for probe_point in probe_points:
     program_src = open("kernel.c").read()
@@ -68,24 +73,24 @@ detection_PIDs = []
 
 def run_detection() -> None:
     global detection_PIDs
-    process = subprocess.Popen("./getpid_ls", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = subprocess.Popen(args.executable, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = process.communicate()
     stdout_str = stdout.decode('utf-8')
     #print(stdout_str, file=sys.stderr)
     stderr_str = stderr.decode('utf-8')
     detection_PID = int((stdout_str.split("\n")[0])[4:])
     detection_PIDs.append(detection_PID)
-    print("detection_PID: %i" % detection_PID, file=sys.stderr)
+    #print("detection_PID: %i" % detection_PID, file=sys.stderr)
 
 def run_detection_Yx(Y: int):
     global finished
     for i in range(Y):
-        print(f'Iteration {i}...', file=sys.stderr)
+        #print(f'Iteration {i}...', file=sys.stderr)
         run_detection()
     finished = True
 
 
-thread = threading.Thread(target=run_detection_Yx, args=[1000])
+thread = threading.Thread(target=run_detection_Yx, args=[args.runs])
 thread.start()
 
 print(f"finished {finished}", file=sys.stderr)
