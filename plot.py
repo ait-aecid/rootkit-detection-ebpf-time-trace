@@ -117,7 +117,6 @@ class Plot:
                 return 0
         import numpy as np
         intervals_filtered = {}
-        print(str(len(self.processes)))
         for name, intervals in self.intervals.items():
             for elem in intervals:
                 pid = elem.pid
@@ -152,3 +151,7 @@ class Plot:
 
         plt.savefig("interval_types_per_run2_" + self.file_date + ".svg")
         plt.clf()
+
+    def print_num_processes(self):
+        print("# of PIDs found in dataset: " + str(len(self.processes)))
+
