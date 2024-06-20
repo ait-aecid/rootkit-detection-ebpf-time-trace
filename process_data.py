@@ -3,8 +3,9 @@ import matplotlib.pyplot as plt
 from multiprocessing import Process
 import os
 import re
-import sys
 import numpy as np
+import pandas as pd
+import pandasql as psql
 from data_classes import Event, Interval, experiment_from_json
 
 
@@ -25,6 +26,8 @@ class Plot:
     file_date = ""
     experiment = None
     events = []
+    events_per_process = {}
+    dataframe = None
 
     def __init__(self, args):
         self.args = args
@@ -161,17 +164,32 @@ class Plot:
     def print_num_processes(self):
         print("# of PIDs found in dataset: " + str(len(self.processes)))
 
-    def check_events_per_process(self) -> bool:
-        events_per_process = {}
+    def __fill_events_per_process(self):
+        if self.events_per_process:
+            # was already filled
+            return
         for pid in self.processes:
             num_events = len([x for x in self.events if x.pid == pid])
-            #print(f"In {pid} are {num_events} events.")#
-            events_per_process[pid] = num_events
-        mean = np.mean(list(events_per_process.values()))
-        standard_deviation = np.std(list(events_per_process.values()))
+            # print(f"In {pid} are {num_events} events.")#
+            self.events_per_process[pid] = num_events
+
+    def __generate_pandas_dataframe(self):
+        self.dataframe = pd.DataFrame([vars(event) for event in self.events])
+
+    def print_num_events_per_process(self, event_name: str):
+        self.__generate_pandas_dataframe()
+        df = self.dataframe
+        query = f"SELECT pid, count(*) AS event_count FROM df WHERE probe_point LIKE '%{event_name}%' GROUP BY pid"
+        result = psql.sqldf(query, locals())
+        print(result)
+
+    def check_events_per_process(self) -> bool:
+        self.__fill_events_per_process()
+        mean = np.mean(list(self.events_per_process.values()))
+        standard_deviation = np.std(list(self.events_per_process.values()))
 
         problem = False
-        for pid, events in events_per_process.items():
+        for pid, events in self.events_per_process.items():
             if np.abs(events - mean) > (5 * standard_deviation):
                 if not problem:
                     print(f"Arithmetic mean is {mean}.")
