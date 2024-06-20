@@ -1,10 +1,13 @@
 import json
+from itertools import chain
+
 import matplotlib.pyplot as plt
 from multiprocessing import Process
 import os
 import re
 import numpy as np
 import pandas as pd
+import plotly.express as px
 import pandasql as psql
 from data_classes import Event, Interval, experiment_from_json
 
@@ -174,6 +177,8 @@ class Plot:
             self.events_per_process[pid] = num_events
 
     def __generate_pandas_dataframe(self):
+        if self.dataframe:
+            return
         self.dataframe = pd.DataFrame([vars(event) for event in self.events])
 
     def print_num_events_per_process(self, event_name: str):
@@ -182,6 +187,51 @@ class Plot:
         query = f"SELECT pid, count(*) AS event_count FROM df WHERE probe_point LIKE '%{event_name}%' GROUP BY pid"
         result = psql.sqldf(query, locals())
         print(result)
+
+    def plot_event_timeline(self):
+        """
+        Plot timeline of single events for the first PID.
+        """
+        import matplotlib.colors as mcolors
+        import matplotlib.patches as mpatches
+        self.__generate_pandas_dataframe()
+        df = self.dataframe
+        query = f"SELECT DISTINCT probe_point FROM df"
+        df = psql.sqldf(query, locals())
+        event_types = list(chain(*df.values.tolist()))
+        colors = {}
+        counter = 0
+        for event_type in event_types:
+            colors[event_type] = list(mcolors.BASE_COLORS.values())[counter]
+            counter += 1
+
+        middle_pid = list(self.processes.keys())[int(len(list(self.processes.keys())) / 2)]
+        first_pid = list(self.processes.keys())[0]
+        events = [event for event in self.events if event.pid == first_pid]
+
+        plt.figure(figsize=(10, 2))
+        fig, ax = plt.subplots()
+
+        # Scatter plot each event on the timeline
+        for event in events:
+            ax.scatter(event.timestamp, 0, marker='.', color=colors[event.probe_point], s=2)
+            #ax.text(event.timestamp, 0.05, event.probe_point, ha='center')
+
+        # Set labels and title
+        ax.set_xlabel('Time')
+        ax.set_yticks([])
+        ax.set_title('Timeline of Events')
+        legend = []
+        for name, color in colors.items():
+            legend.append(mpatches.Patch(color=color, label=name.replace("__", "")))
+            print(name)
+        ax.legend(handles=legend)
+
+        filename = "event_timeline2_" + self.file_date + ".svg"
+        plt.savefig(filename)
+        plt.clf()
+
+
 
     def check_events_per_process(self) -> bool:
         self.__fill_events_per_process()

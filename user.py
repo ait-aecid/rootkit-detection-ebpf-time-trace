@@ -9,15 +9,15 @@ from data_classes import Event, Experiment
 
 probe_points = [
     #"do_sys_openat2",
-    #"x64_sys_call",  # maybe this only works as a retprobe: 'cannot attach kprobe, probe entry may not exist'
+    "x64_sys_call",  # maybe this only works as a retprobe: 'cannot attach kprobe, probe entry may not exist'
     "__x64_sys_getdents64",
-    "__fdget_pos",
-    "__fget_light",
-    "iterate_dir",
+    #"__fdget_pos",
+    #"__fget_light",
+    #"iterate_dir",
     #"security_file_permission",
     #"apparmor_file_permission",
-    "dcache_readdir",
-    "filldir64"#,
+    #"dcache_readdir",
+    #"filldir64"#,
     #"verify_dirent_name",
     #"touch_atime",
     #"atime_needs_update",
