@@ -7,7 +7,6 @@ import os
 import re
 import numpy as np
 import pandas as pd
-import plotly.express as px
 import pandasql as psql
 from data_classes import Event, Interval, experiment_from_json
 
@@ -25,12 +24,18 @@ def __unique_vals__(lst: list) -> int:
 class Plot:
     args = []
     processes = {}
+    processes_rootkit = {}
     intervals = {}
+    intervals_rootkit = {}
     file_date = ""
     experiment = None
     events = []
+    events_rootkit = []
     events_per_process = {}
+    events_per_process_rootkit = {}
     dataframe = None
+    event_count = {}
+    event_count_rootkit = {}
 
     def __init__(self, args):
         self.args = args
@@ -48,6 +53,7 @@ class Plot:
             experiment = experiment_from_json(json_obj)
             self.experiment = experiment
             self.events = experiment.events
+            self.events_rootkit = experiment.events_rootkit
 
         self.file_date = filename.replace("output", "").replace(".json", "")
 
@@ -57,6 +63,13 @@ class Plot:
             except KeyError:
                 self.processes[event.pid] = []
             self.processes[event.pid].append(event)
+
+        for event in experiment.events_rootkit:
+            try:
+                self.processes_rootkit[event.pid]
+            except KeyError:
+                self.processes_rootkit[event.pid] = []
+            self.processes_rootkit[event.pid].append(event)
 
         for pid in self.processes:
             for i in range(len(self.processes[pid]) - 1):
@@ -70,6 +83,32 @@ class Plot:
                 self.intervals[type_name].append(
                     Interval(event_b.timestamp - event_a.timestamp, event_a, event_b, pid, event_a.tgid))
 
+        for pid in self.processes_rootkit:
+            for i in range(len(self.processes_rootkit[pid]) - 1):
+                event_a = self.processes_rootkit[pid][i]
+                event_b = self.processes_rootkit[pid][i + 1]
+                type_name = event_a.probe_point + ":" + event_b.probe_point
+                try:
+                    self.intervals_rootkit[type_name]
+                except KeyError:
+                    self.intervals_rootkit[type_name] = []
+                self.intervals_rootkit[type_name].append(
+                    Interval(event_b.timestamp - event_a.timestamp, event_a, event_b, pid, event_a.tgid))
+
+        for event in self.events:
+            try:
+                self.event_count[event.probe_point]
+            except KeyError:
+                self.event_count[event.probe_point] = 0
+            self.event_count[event.probe_point] += 1
+
+        for event in self.events_rootkit:
+            try:
+                self.event_count_rootkit[event.probe_point]
+            except KeyError:
+                self.event_count_rootkit[event.probe_point] = 0
+            self.event_count_rootkit[event.probe_point] += 1
+
     def interval_type_counts(self):
         plt.barh([x for x in self.intervals.keys()], [len(x) for x in self.intervals.values()])
         plt.tight_layout()
@@ -80,7 +119,7 @@ class Plot:
         def make_histogram(name: str, values: [int]) -> None:
             plt.hist(values, bins=__unique_vals__(values))
             plt.title(name)
-            plt.yscale('log')
+            plt.yscale('linear')
             plt.tight_layout()
             plt.savefig("distribution_" + self.file_date + "_" + name + ".svg")
             print(name + " saved")
@@ -94,6 +133,33 @@ class Plot:
             plot_processes.append(worker)
 
         for worker in plot_processes:
+            worker.join()
+
+    def distribution_comparison(self):
+        def make_histogram(name: str, values_a: [int], values_b: [int]) -> None:
+            plt.hist(values_a, bins=__unique_vals__(values_a))
+            plt.hist(values_b, bins=__unique_vals__(values_b))
+            plt.title(name)
+            plt.yscale('log')
+            plt.tight_layout()
+            plt.savefig("distribution_comparison_" + self.file_date + "_" + name + ".svg")
+            print(name + " saved")
+            plt.clf()
+
+        workers = []
+        interval_types = []
+        for interval_type in self.intervals.keys():
+            if interval_type not in interval_types:
+                interval_types.append(interval_type)
+        for interval_type in self.intervals_rootkit.keys():
+            if interval_type not in interval_types:
+                interval_types.append(interval_type)
+        print("interval_types: " + str(interval_types))
+        for name in interval_types:
+            worker = Process(target=make_histogram, args=[name, [x.time for x in self.intervals[name]], [x.time for x in self.intervals_rootkit[name]]])
+            worker.start()
+            workers.append(worker)
+        for worker in workers:
             worker.join()
 
     def interval_types_per_run(self):
@@ -231,6 +297,18 @@ class Plot:
         plt.savefig(filename)
         plt.clf()
 
+    def print_statistics(self):
+        print("Dataset has")
+        print(f"{len(self.events)} events for the run without rootkit")
+        print(f"and {len(self.events_rootkit)} events with rootkit.")
+        print("")
+        print("no rootkit")
+        for key, value in self.event_count.items():
+            print(f"{key}: {value}")
+        print("rootkit")
+        for key, value in self.event_count_rootkit.items():
+            print(f"{key}: {value}")
+        print("")
 
 
     def check_events_per_process(self) -> bool:
