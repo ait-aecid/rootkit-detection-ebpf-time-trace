@@ -46,9 +46,10 @@ class Interval:
 
 
 class Experiment:
-    def __init__(self, executable: str, runs: int, events: [Event]):
+    def __init__(self, executable: str, iterations: int, linux_version: str, events: [Event]):
         self.executable: str = executable
-        self.runs: int = runs
+        self.runs: int = iterations
+        self.linux_version: str= linux_version
         self.events: [Event] = events
 
     def __getitem__(self, item):
@@ -57,5 +58,6 @@ class Experiment:
 
 def experiment_from_json(input: dict) -> Experiment:
     return Experiment(executable=input["executable"],
-                      runs=int(input["runs"]),
+                      iterations=int(input["iterations"]),
+                      linux_version=input["linux_version"],
                       events=[Event(**elem) for elem in input["events"]])

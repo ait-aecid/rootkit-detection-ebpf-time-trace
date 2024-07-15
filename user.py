@@ -11,13 +11,13 @@ probe_points = [
     #"do_sys_openat2",
     "x64_sys_call",  # maybe this only works as a retprobe: 'cannot attach kprobe, probe entry may not exist'
     "__x64_sys_getdents64",
-    #"__fdget_pos",
+    "__fdget_pos",
     #"__fget_light",
-    #"iterate_dir",
+    "iterate_dir",
     #"security_file_permission",
     #"apparmor_file_permission",
     #"dcache_readdir",
-    #"filldir64"#,
+    #"filldir64",
     #"verify_dirent_name",
     #"touch_atime",
     #"atime_needs_update",
@@ -29,12 +29,12 @@ programs = {}
 output = []
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--runs", "-r", default=100, type=int, help="Number of times to run the experiment.")
+parser.add_argument("--iterations", "-i", default=100, type=int, help="Number of times to run the experiment.")
 parser.add_argument("--executable", "-e", default="./getpid_opendir_readdir_proc", type=str, help="Provide an executable for the experiment.")
 
 args = parser.parse_args()
 
-experiment = Experiment(args.executable, args.runs, [])
+experiment = Experiment(args.executable, args.iterations, os.uname().release, [])
 
 for probe_point in probe_points:
     program_src = open("kernel.c").read()
@@ -67,7 +67,7 @@ for probe_point in probe_points:
 
     bpf_return_prog["buffer"].open_ring_buffer(callback)
 
-print(f"Running experiment with {experiment.executable} for {experiment.runs} times.", file=sys.stderr)
+print(f"Running experiment with {experiment.executable} for {experiment.iterations} times.", file=sys.stderr)
 
 finished = False
 detection_PIDs = []
@@ -93,7 +93,7 @@ def run_detection_Yx(Y: int):
     finished = True
 
 
-thread = threading.Thread(target=run_detection_Yx, args=[args.runs])
+thread = threading.Thread(target=run_detection_Yx, args=[args.iterations])
 thread.start()
 
 print(f"finished {finished}", file=sys.stderr)
