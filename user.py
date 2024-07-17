@@ -4,6 +4,8 @@ import sys
 import argparse
 import threading
 import subprocess
+import random
+import string
 from time import sleep
 from data_classes import Event, Experiment
 from linux import shell, insert_rootkit, remove_rootkit, list_modules, ROOTKIT_NAME
@@ -14,14 +16,15 @@ probe_points = [
     "__x64_sys_getdents64",
     "__fdget_pos",
     #"__fget_light",
-    "iterate_dir",
+    #"iterate_dir",
     #"security_file_permission",
     #"apparmor_file_permission",
     #"dcache_readdir",
-    "filldir64",
-    "verify_dirent_name",
-    "touch_atime",
+    #"filldir64",
+    #"verify_dirent_name",
+    #"touch_atime",
     #"atime_needs_update",
+    #"__f_unlock_pos"
 ]
 
 #stop = False
@@ -38,6 +41,13 @@ args = parser.parse_args()
 
 experiment = Experiment(args.executable, args.iterations, os.uname().release, [], [])
 
+# setup directory structure
+DIR_NAME = ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
+VISIBLE_FILE = "see_me_123"
+HIDDEN_FILE = "hide_me_asdf"
+shell("mkdir " + DIR_NAME)  # in the CWD is fine
+shell("touch " + DIR_NAME + "/" + VISIBLE_FILE)
+shell("touch " + DIR_NAME + "/" + HIDDEN_FILE)
 
 for probe_point in probe_points:
     program_src = open("kernel.c").read()
@@ -73,27 +83,27 @@ for probe_point in probe_points:
     bpf_return_prog["buffer"].open_ring_buffer(callback)
 
 
-def run_detection() -> None:
+def run_detection_once(error_on_hidden: bool) -> None:
     global detection_PIDs
-    process = subprocess.Popen(args.executable, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = subprocess.Popen(["ls", "-1", DIR_NAME], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = process.communicate()
     stdout_str = stdout.decode('utf-8')
-    #print(stdout_str, file=sys.stderr)
-    stderr_str = stderr.decode('utf-8')
-    detection_PID = int((stdout_str.split("\n")[0])[4:])
-    detection_PIDs.append(detection_PID)
-    print("detection_PID: %i" % detection_PID, file=sys.stderr)
+    if (HIDDEN_FILE in stdout_str) != error_on_hidden:
+        raise Exception(f"rootkit failed! error_on_hidden {error_on_hidden}; ls result: {stdout_str}")
+    detection_PIDs.append(process.pid)
+    print("detection_PID: %i" % process.pid, file=sys.stderr)
     process.wait()
 
 
-def run_detection_Yx(Y: int):
+def run_detection(iterations: int, error_on_hidden: bool):
     global finished
-    for i in range(Y):
+    for i in range(iterations):
         print(f'Iteration {i}...', file=sys.stderr)
-        run_detection()
+        run_detection_once(error_on_hidden)
     finished = True
 
 
+print("attached pf probes:\n", file=sys.stderr)
 for name, program in programs.items():
     print(name, file=sys.stderr)
 
@@ -105,7 +115,7 @@ if ROOTKIT_NAME in list_modules():
     remove_rootkit()
 
 finished = False
-thread = threading.Thread(target=run_detection_Yx, args=[args.iterations])
+thread = threading.Thread(target=run_detection, args=[args.iterations, True])
 thread.start()
 
 poll_count = 0
@@ -145,7 +155,7 @@ insert_rootkit()
 output = []
 finished = False
 
-thread = threading.Thread(target=run_detection_Yx, args=[args.iterations])
+thread = threading.Thread(target=run_detection, args=[args.iterations, False])
 thread.start()
 
 print(f"finished: {finished}", file=sys.stderr)
@@ -184,6 +194,8 @@ remove_rootkit()
 for bpf_prog in programs.values():
     bpf_prog.cleanup()
 
+# cleanup testdir structure
+shell("rm -rf " + DIR_NAME)
 
 print("Experiment finished, saving output.", file=sys.stderr)
 
