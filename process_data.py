@@ -21,12 +21,17 @@ def __unique_vals__(lst: list) -> int:
     return unique
 
 
+def mean(intervals: [Interval]) -> float:
+    return sum([i.time for i in intervals]) / len(intervals)
+
+
 class Plot:
     args = []
     processes = {}
     processes_rootkit = {}
     intervals = {}
     intervals_rootkit = {}
+    interval_types = []
     file_date = ""
     experiment = None
     events = []
@@ -95,6 +100,13 @@ class Plot:
                 self.intervals_rootkit[type_name].append(
                     Interval(event_b.timestamp - event_a.timestamp, event_a, event_b, pid, event_a.tgid))
 
+        for interval_type in self.intervals.keys():
+            if interval_type not in self.interval_types:
+                self.interval_types.append(interval_type)
+        for interval_type in self.intervals_rootkit.keys():
+            if interval_type not in self.interval_types:
+                self.interval_types.append(interval_type)
+
         for event in self.events:
             try:
                 self.event_count[event.probe_point]
@@ -137,30 +149,38 @@ class Plot:
 
     def distribution_comparison(self):
         def make_histogram(name: str, values_a: [int], values_b: [int]) -> None:
-            plt.hist(values_a, bins=__unique_vals__(values_a))
-            plt.hist(values_b, bins=__unique_vals__(values_b))
+            plt.hist(values_a, bins=__unique_vals__(values_a), label="normal")
+            plt.hist(values_b, bins=__unique_vals__(values_b), label="with rootkit")
             plt.title(name)
             plt.yscale('log')
+            plt.legend()
             plt.tight_layout()
             plt.savefig("distribution_comparison_" + self.file_date + "_" + name + ".svg")
             print(name + " saved")
             plt.clf()
 
         workers = []
-        interval_types = []
-        for interval_type in self.intervals.keys():
-            if interval_type not in interval_types:
-                interval_types.append(interval_type)
-        for interval_type in self.intervals_rootkit.keys():
-            if interval_type not in interval_types:
-                interval_types.append(interval_type)
-        print("interval_types: " + str(interval_types))
-        for name in interval_types:
-            worker = Process(target=make_histogram, args=[name, [x.time for x in self.intervals[name]], [x.time for x in self.intervals_rootkit[name]]])
-            worker.start()
-            workers.append(worker)
+        for name in self.interval_types:
+            try:
+                worker = Process(target=make_histogram, args=[name, [x.time for x in self.intervals[name]], [x.time for x in self.intervals_rootkit[name]]])
+                worker.start()
+                workers.append(worker)
+            except KeyError:
+                pass
         for worker in workers:
             worker.join()
+
+    def interval_means(self):
+        print("####interval means####")
+        print("name\tnormal\trootkitted")
+        for name in self.interval_types:
+            try:
+                normal = mean(self.intervals[name])
+                rootkit = mean(self.intervals_rootkit[name])
+                print(f"{name}\t\t{normal:.1f}\t{rootkit:.1f}")
+            except KeyError:
+                pass
+        print("######################")
 
     def interval_types_per_run(self):
         # 16
