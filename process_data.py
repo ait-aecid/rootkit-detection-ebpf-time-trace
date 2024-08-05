@@ -8,6 +8,7 @@ import re
 import numpy as np
 import pandas as pd
 import pandasql as psql
+from skimage.filters import threshold_otsu
 from data_classes import Event, Interval, experiment_from_json
 
 
@@ -248,6 +249,49 @@ class Plot:
 
         filename = "interval_types_per_run2_" + self.file_date + ".svg"
         plt.savefig(filename)
+        plt.clf()
+
+    def boxplot(self, interval: str):
+        data = [[interval.time for interval in self.intervals[interval]], [interval.time for interval in self.intervals_rootkit[interval]]]
+        plt.boxplot(data, labels=["without rootkit", "rootkitted"], patch_artist=True)
+
+        plt.title(interval)
+        plt.ylabel("nano seconds")
+
+        plt.tight_layout()
+        filename = "boxplots_" + self.file_date + ".svg"
+        plt.savefig(filename)
+        print(f"saved {filename}")
+        plt.clf()
+
+    def boxplot4(self):
+        interval = "filldir64-return:filldir64-enter"
+
+        data_no_rootkit = self.intervals[interval]
+        data_rootkitted = self.intervals_rootkit[interval]
+
+        threshold = threshold_otsu(np.array([i.time for i in data_no_rootkit] + [i.time for i in data_rootkitted]))
+
+        split = threshold
+        data = [
+            [i.time for i in data_no_rootkit if i.time < split],
+            [i.time for i in data_no_rootkit if i.time >= split],
+            [i.time for i in data_rootkitted if i.time < split],
+            [i.time for i in data_rootkitted if i.time >= split]
+        ]
+        plt.boxplot(data, labels=["no rootkit",
+                                  "no rootkit",
+                                  "rootkitted",
+                                  "rootkitted"],
+                    patch_artist=True)
+
+        plt.title(interval)
+        plt.ylabel("nano seconds")
+
+        plt.tight_layout()
+        filename = "boxplot4_" + self.file_date + ".svg"
+        plt.savefig(filename)
+        print(f"saved {filename}")
         plt.clf()
 
     def print_num_processes(self):
