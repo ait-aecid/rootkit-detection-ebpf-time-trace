@@ -42,7 +42,7 @@ args = parser.parse_args()
 experiment = Experiment(args.executable, args.iterations, os.uname().release, [], [])
 
 # setup directory structure
-DIR_NAME = ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
+DIR_NAME = 'test_dir_' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
 VISIBLE_FILE = "see_me_123"
 HIDDEN_FILE = "hide_me_asdf"
 shell("mkdir " + DIR_NAME)  # in the CWD is fine
@@ -85,11 +85,11 @@ for probe_point in probe_points:
 
 def run_detection_once(error_on_hidden: bool) -> None:
     global detection_PIDs
-    process = subprocess.Popen(["ls", "-1", DIR_NAME], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = subprocess.Popen([args.executable, DIR_NAME], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = process.communicate()
     stdout_str = stdout.decode('utf-8')
     if (HIDDEN_FILE in stdout_str) != error_on_hidden:
-        raise Exception(f"rootkit failed! error_on_hidden {error_on_hidden}; ls result: {stdout_str}")
+        raise Exception("rootkit failed! error_on_hidden: " + str(error_on_hidden) + "; ls result: <" + stdout_str.replace('\n','+') + ">")
     detection_PIDs.append(process.pid)
     print("detection_PID: %i" % process.pid, file=sys.stderr)
     process.wait()
@@ -103,9 +103,10 @@ def run_detection(iterations: int, error_on_hidden: bool):
     finished = True
 
 
-print("attached pf probes:\n", file=sys.stderr)
+print("\nattached bpf probes:", file=sys.stderr)
 for name, program in programs.items():
     print(name, file=sys.stderr)
+print("")  # newline
 
 print(f"Running experiment with {experiment.executable} for {experiment.iterations} times.", file=sys.stderr)
 
