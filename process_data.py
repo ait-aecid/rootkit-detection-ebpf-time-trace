@@ -272,12 +272,11 @@ class Plot:
 
         threshold = threshold_otsu(np.array([i.time for i in data_no_rootkit] + [i.time for i in data_rootkitted]))
 
-        split = threshold
         data = [
-            [i.time for i in data_no_rootkit if i.time < split],
-            [i.time for i in data_no_rootkit if i.time >= split],
-            [i.time for i in data_rootkitted if i.time < split],
-            [i.time for i in data_rootkitted if i.time >= split]
+            [i.time for i in data_no_rootkit if i.time < threshold],
+            [i.time for i in data_no_rootkit if i.time >= threshold],
+            [i.time for i in data_rootkitted if i.time < threshold],
+            [i.time for i in data_rootkitted if i.time >= threshold]
         ]
         plt.boxplot(data, labels=["no rootkit",
                                   "no rootkit",
@@ -287,6 +286,11 @@ class Plot:
 
         plt.title(interval)
         plt.ylabel("nano seconds")
+
+        print("### interval means [cuttoff] ###")
+        print("mean above threshold, no rootkit: " + str(mean([i for i in data_no_rootkit if i.time >= threshold])))
+        print("mean above threshold, rootkitted: " + str(mean([i for i in data_rootkitted if i.time >= threshold])))
+        print("################################")
 
         plt.tight_layout()
         filename = "boxplot4_" + self.file_date + ".svg"

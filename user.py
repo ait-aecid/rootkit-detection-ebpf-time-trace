@@ -12,15 +12,15 @@ from linux import shell, insert_rootkit, remove_rootkit, list_modules, ROOTKIT_N
 
 probe_points = [
     #"do_sys_openat2",
-    "x64_sys_call",  # maybe this only works as a retprobe: 'cannot attach kprobe, probe entry may not exist'
-    "__x64_sys_getdents64",
-    "__fdget_pos",
+    #"x64_sys_call",  # maybe this only works as a retprobe: 'cannot attach kprobe, probe entry may not exist' <- Linux < 6.5
+    #"__x64_sys_getdents64",
+    #"__fdget_pos",
     #"__fget_light",
     #"iterate_dir",
     #"security_file_permission",
     #"apparmor_file_permission",
     #"dcache_readdir",
-    #"filldir64",
+    "filldir64",
     #"verify_dirent_name",
     #"touch_atime",
     #"atime_needs_update",
@@ -39,15 +39,18 @@ parser.add_argument("--executable", "-e", default="./getpid_opendir_readdir_proc
 
 args = parser.parse_args()
 
-experiment = Experiment(args.executable, args.iterations, os.uname().release, [], [])
-
 # setup directory structure
 DIR_NAME = 'test_dir_' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
 VISIBLE_FILE = "see_me_123"
 HIDDEN_FILE = "hide_me_asdf"
 shell("mkdir " + DIR_NAME)  # in the CWD is fine
-shell("touch " + DIR_NAME + "/" + VISIBLE_FILE)
 shell("touch " + DIR_NAME + "/" + HIDDEN_FILE)
+for i in range(100):
+    shell("touch " + DIR_NAME + "/" + VISIBLE_FILE + str(i))
+
+dir_content = shell("ls -a1 " + DIR_NAME).replace("\n", ",")
+
+experiment = Experiment(args.executable, args.iterations, dir_content, os.uname().release, [], [])
 
 for probe_point in probe_points:
     program_src = open("kernel.c").read()
