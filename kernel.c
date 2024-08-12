@@ -9,7 +9,7 @@ struct event {
 int foo(struct pt_regs *ctx) {
     u64 pid_tgid = bpf_get_current_pid_tgid();
     u32 pid = (u32) pid_tgid;
-    bpf_trace_printk("pid is: %ui", pid);
+    //bpf_trace_printk("pid is: %ui", pid);
 
     /** Exclude the PID of the userspace tracing program.
         This number gets replaced before BPF compilation.
