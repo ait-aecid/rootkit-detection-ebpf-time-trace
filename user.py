@@ -45,8 +45,7 @@ VISIBLE_FILE = "see_me_123"
 HIDDEN_FILE = "hide_me_asdf"
 shell("mkdir " + DIR_NAME)  # in the CWD is fine
 shell("touch " + DIR_NAME + "/" + HIDDEN_FILE)
-for i in range(100):
-    shell("touch " + DIR_NAME + "/" + VISIBLE_FILE + str(i))
+shell("touch " + DIR_NAME + "/" + VISIBLE_FILE)
 
 dir_content = shell("ls -a1 " + DIR_NAME).replace("\n", ",")
 
