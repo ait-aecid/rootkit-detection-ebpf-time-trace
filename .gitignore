@@ -1,3 +1,8 @@
 pypy3_venv
 
 run.py
+
+
+
+__pycache__/
+venv/
