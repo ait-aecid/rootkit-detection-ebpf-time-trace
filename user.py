@@ -6,6 +6,7 @@ import threading
 import subprocess
 import random
 import string
+import gzip
 from time import sleep
 from data_classes import Event, Experiment
 from linux import shell, insert_rootkit, remove_rootkit, list_modules, ROOTKIT_NAME
@@ -19,10 +20,10 @@ probe_points = [
     #"iterate_dir",
     #"security_file_permission",
     #"apparmor_file_permission",
-    #"dcache_readdir",
+    "dcache_readdir",
     "filldir64",
-    #"verify_dirent_name",
-    #"touch_atime",
+    "verify_dirent_name",
+    "touch_atime",
     #"atime_needs_update",
     #"__f_unlock_pos"
 ]
@@ -205,9 +206,9 @@ print("Experiment finished, saving output.", file=sys.stderr)
 import json
 from datetime import datetime
 
-filename = "output" + datetime.now().isoformat() + ".json"
-with open(filename, 'w') as file:
-    file.write(json.dumps(experiment, default=vars))
+filename = "output" + datetime.now().isoformat() + ".json.gz"
+with gzip.open(filename, 'w', compresslevel=1) as file:
+    file.write(json.dumps(experiment, default=vars).encode())
 
 print(f"Saved data to %s" % filename)
 

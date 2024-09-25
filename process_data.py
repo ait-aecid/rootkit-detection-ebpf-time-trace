@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from multiprocessing import Process
 import os
 import re
+import gzip
 import numpy as np
 import pandas as pd
 import pandasql as psql
@@ -50,11 +51,11 @@ class Plot:
         except IndexError:
             # get the most recent output file...
             files = [f for f in os.listdir('.') if os.path.isfile(os.path.join('.', f))]
-            outputs = [file for file in files if re.match(r'^output.*\.json$', file)]
+            outputs = [file for file in files if re.match(r'^output.*\.json.gz$', file)]
             outputs.sort()
             filename = outputs.pop()
 
-        with open(filename, 'r') as file:
+        with gzip.open(filename, 'r') as file:
             json_obj = json.load(file)
             experiment = experiment_from_json(json_obj)
             self.experiment = experiment
