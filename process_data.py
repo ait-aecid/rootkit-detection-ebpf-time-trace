@@ -174,12 +174,12 @@ class Plot:
 
     def interval_means(self):
         print("####interval means####")
-        print("name\tnormal\trootkitted")
+        print(f"{'name'.ljust(55)}\tnormal\trootkitted\tfactor")
         for name in self.interval_types:
             try:
                 normal = mean(self.intervals[name])
                 rootkit = mean(self.intervals_rootkit[name])
-                print(f"{name}\t\t{normal:.1f}\t{rootkit:.1f}")
+                print(f"{name.ljust(55)}\t{normal:.1f}\t\t{rootkit:.1f}\t\t{rootkit/normal-1:.3f}")
             except KeyError:
                 pass
         print("######################")
