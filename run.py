@@ -12,7 +12,8 @@ plot.interval_means()
 #plot.boxplot("filldir64-return:filldir64-enter")
 #plot.boxplot4()
 
-plot.distribution_comparison()
+plot.distribution_split()
+#plot.distribution_comparison()
 
 
 #plot.interval_types_per_run()
