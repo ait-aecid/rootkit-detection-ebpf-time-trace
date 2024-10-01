@@ -9,7 +9,7 @@ import string
 import gzip
 from time import sleep
 from data_classes import Event, Experiment
-from linux import shell, insert_rootkit, remove_rootkit, list_modules, ROOTKIT_NAME
+from linux import shell, insert_rootkit, remove_rootkit, list_modules, ROOTKIT_NAME, run_background
 
 probe_points = [
     #"do_sys_openat2",
@@ -17,7 +17,7 @@ probe_points = [
     #"__x64_sys_getdents64",
     #"__fdget_pos",
     #"__fget_light",
-    #"iterate_dir",
+    "iterate_dir",
     #"security_file_permission",
     #"apparmor_file_permission",
     "dcache_readdir",
@@ -118,9 +118,11 @@ if ROOTKIT_NAME in list_modules():
     print("rootkit was loaded! removing it...")
     remove_rootkit()
 
+#stress_process = run_background("stress-ng --cpu 10")
+
 finished = False
-thread = threading.Thread(target=run_detection, args=[args.iterations, True])
-thread.start()
+detection_thread = threading.Thread(target=run_detection, args=[args.iterations, True])
+detection_thread.start()
 
 poll_count = 0
 while not finished:
@@ -130,7 +132,8 @@ while not finished:
     sleep(0.0005)  # sleep for 5 milliseconds, then check the buffers again
 print(f"polled {poll_count} times!", file=sys.stderr)
 
-thread.join()
+detection_thread.join()
+#stress_process.kill()
 
 print("done with the \"no rootkit version\"", file=sys.stderr)
 
@@ -159,8 +162,10 @@ insert_rootkit()
 output = []
 finished = False
 
-thread = threading.Thread(target=run_detection, args=[args.iterations, False])
-thread.start()
+#stress_process = run_background("stress-ng --cpu 10")
+
+detection_thread = threading.Thread(target=run_detection, args=[args.iterations, False])
+detection_thread.start()
 
 print(f"finished: {finished}", file=sys.stderr)
 
@@ -172,7 +177,8 @@ while not finished:
     sleep(0.0005)  # sleep for 5 milliseconds, then check the buffers again
 print(f"polled {poll_count} times!", file=sys.stderr)
 
-thread.join()
+detection_thread.join()
+#stress_process.kill()
 
 print("done with the \"rootkit version\"", file=sys.stderr)
 

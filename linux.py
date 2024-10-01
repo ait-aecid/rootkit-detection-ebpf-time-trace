@@ -41,3 +41,8 @@ def shell(cmd: str) -> str:
     stdout_str = stdout.decode('utf-8')
     print(stdout_str, file=sys.stderr, end='')
     return stdout_str
+
+
+def run_background(cmd: str) -> subprocess.Popen:
+    process = subprocess.Popen(cmd.split(" "))
+    return  process
