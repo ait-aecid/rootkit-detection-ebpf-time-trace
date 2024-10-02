@@ -29,20 +29,20 @@ class Interval:
         self.pid = pid
         self.tgid = tgid
 
-        def __lt__(self, other: 'Interval') -> bool:
-            return self.time < other.time
+    def __lt__(self, other: 'Interval') -> bool:
+        return self.time < other.time
 
-        def __le__(self, other: 'Interval') -> bool:
-            return self.time <= other.time
+    def __le__(self, other: 'Interval') -> bool:
+        return self.time <= other.time
 
-        def __gt__(self, other: 'Interval') -> bool:
-            return self.time > other.time
+    def __gt__(self, other: 'Interval') -> bool:
+        return self.time > other.time
 
-        def __ge__(self, other: 'Interval') -> bool:
-            return self.time >= other.time
+    def __ge__(self, other: 'Interval') -> bool:
+        return self.time >= other.time
 
-        def __getitem__(self, item):
-            return self[item]
+    def __getitem__(self, item):
+        return self[item]
 
 
 class Experiment:

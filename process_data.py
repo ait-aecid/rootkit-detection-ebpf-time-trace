@@ -1,5 +1,6 @@
 import json
 from itertools import chain
+from statistics import median
 
 import matplotlib.pyplot as plt
 from multiprocessing import Process
@@ -243,16 +244,33 @@ class Plot:
 
     def interval_means(self):
         print("####interval means####")
-        print(f"{'name'.ljust(55)}\tnormal(count)\t\trootkitted(count)\tpercent slower")
+        print(f"{'name'.ljust(55)}\tnormal\t\trootkitted\tpercent slower")
         for name in self.interval_types:
             try:
-                normal = mean(self.intervals[name])
-                rootkit = mean(self.intervals_rootkit[name])
-                print(f"{name.ljust(55)}\t{normal:.1f} #{len(self.intervals[name])}\t\t{rootkit:.1f} #{len(self.intervals_rootkit[name])}\t\t{(rootkit/normal-1)*100:.1f}")
+                normal_mean = mean(self.intervals[name])
+                rootkit_mean = mean(self.intervals_rootkit[name])
+                factor_mean = (rootkit_mean/normal_mean-1)
+                print(f"{name.ljust(55)}\t{normal_mean:.1f} #{len(self.intervals[name])}\t\t{rootkit_mean:.1f} #{len(self.intervals_rootkit[name])}\t\t{factor_mean*100:.1f}")
 
             except KeyError:
                 pass
         print("######################")
+
+
+    def interval_medians(self):
+        print("####interval medians####")
+        print(f"{'name'.ljust(55)}\tnormal\t\trootkitted\tpercent slower")
+        for name in self.interval_types:
+            try:
+                normal_median = median([i.time for i in self.intervals[name]])
+                rootkit_median = median([i.time for i in self.intervals_rootkit[name]])
+                factor_median = (rootkit_median/normal_median-1)
+                print(f"{name.ljust(55)}{normal_median:.1f} #{len(self.intervals[name])}\t\t{rootkit_median:.1f} #{len(self.intervals_rootkit[name])}\t\t{factor_median*100:.1f}")
+
+            except KeyError:
+                pass
+        print("######################")
+
 
     def interval_means_latex(self):
         print("####interval means####")
@@ -266,6 +284,23 @@ class Plot:
             except KeyError:
                 pass
         print("######################")
+
+
+    def interval_medians_latex(self):
+        print("####interval medians####")
+        print(f"{'name'.ljust(55)}\tnormal\t\trootkitted\tpercent slower")
+        for name in self.interval_types:
+            try:
+                normal_median = median([i.time for i in self.intervals[name]])
+                rootkit_median = median([i.time for i in self.intervals_rootkit[name]])
+                factor_median = (rootkit_median / normal_median - 1)
+                name_escaped = name.replace('_', '\_')
+                print(f"{name_escaped} & {normal_median:.1f} & {rootkit_median:.1f} & {factor_median*100:.1f} \\\\")
+
+            except KeyError:
+                pass
+        print("######################")
+
 
     def interval_types_per_run(self):
         # 16
