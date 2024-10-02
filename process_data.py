@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import pandasql as psql
 from skimage.filters import threshold_otsu
+from scipy.stats import median_abs_deviation
 from data_classes import Event, Interval, experiment_from_json
 from sklearn.mixture import GaussianMixture
 
@@ -248,12 +249,15 @@ class Plot:
     def interval_means(self):
         print("####interval means####")
         print(f"{'name'.ljust(55)}\tnormal\t\trootkitted\tpercent slower")
+        print("value:standard_deviation #count")
         for name in self.interval_types:
             try:
                 normal_mean = mean(self.intervals[name])
+                normal_std = np.std([i.time for i in self.intervals[name]])
                 rootkit_mean = mean(self.intervals_rootkit[name])
+                rootkit_std = np.std([i.time for i in self.intervals_rootkit[name]])
                 factor_mean = (rootkit_mean/normal_mean-1)
-                print(f"{name.ljust(55)}\t{normal_mean:.1f} #{len(self.intervals[name])}\t\t{rootkit_mean:.1f} #{len(self.intervals_rootkit[name])}\t\t{factor_mean*100:.1f}")
+                print(f"{name.ljust(55)}\t{normal_mean:.1f}:{normal_std:.1f} #{len(self.intervals[name])}\t\t{rootkit_mean:.1f}:{rootkit_std:.1f} #{len(self.intervals_rootkit[name])}\t\t{factor_mean*100:.1f}")
 
             except KeyError:
                 pass
@@ -263,12 +267,15 @@ class Plot:
     def interval_medians(self):
         print("####interval medians####")
         print(f"{'name'.ljust(55)}\tnormal\t\trootkitted\tpercent slower")
+        print("value:median_absolute_dviation #count")
         for name in self.interval_types:
             try:
                 normal_median = median([i.time for i in self.intervals[name]])
+                normal_mad = median_abs_deviation([i.time for i in self.intervals[name]])
                 rootkit_median = median([i.time for i in self.intervals_rootkit[name]])
+                rootkit_mad = median_abs_deviation([i.time for i in self.intervals_rootkit[name]])
                 factor_median = (rootkit_median/normal_median-1)
-                print(f"{name.ljust(55)}{normal_median:.1f} #{len(self.intervals[name])}\t\t{rootkit_median:.1f} #{len(self.intervals_rootkit[name])}\t\t{factor_median*100:.1f}")
+                print(f"{name.ljust(55)}{normal_median:.1f}:{normal_mad:.1f} #{len(self.intervals[name])}\t\t{rootkit_median:.1f}:{rootkit_mad:.1f} #{len(self.intervals_rootkit[name])}\t\t{factor_median*100:.1f}")
 
             except KeyError:
                 pass
