@@ -7,6 +7,7 @@ from multiprocessing import Process
 import os
 import re
 import gzip
+import math
 import numpy as np
 import pandas as pd
 import pandasql as psql
@@ -160,6 +161,7 @@ class Plot:
                 plt.axvline(mean_a, color='blue', linestyle='dashed', linewidth=1)
             for mean_b in means_b:
                 plt.axvline(mean_b, color='red', linestyle='dotted', linewidth=1)
+            plt.xlim(0, max(means_a + means_b) * 2)
             plt.title(name)
             plt.yscale('log')
             plt.legend()
@@ -168,7 +170,7 @@ class Plot:
             print(name + " saved")
             plt.clf()
 
-        def split_gaussian_mixture(name, values: [int], rk) -> None:
+        def split_gaussian_mixture(name: str, values: [int], rk) -> None:
             data = np.array(values)
             data = data.reshape(-1, 1)
             n_components_range = range(1, 11)
@@ -193,7 +195,7 @@ class Plot:
 
             # Filter out components with weights below the threshold
             weight_threshold = 0.001 # Components with less than that of the total data will be discarded
-            var_threshold = 1000000000 # Components with higher variances will be discarded
+            var_threshold = 80000000 # Components with higher variances will be discarded
             valid_components = (weights > weight_threshold) & (covariances < var_threshold)
 
             # Print the parameters of the valid components
@@ -205,11 +207,12 @@ class Plot:
                     #print(f"Component {i + 1}:")
                     print(f"  Mean: {means[i]:.2f}")
                     print(f"  Variance: {covariances[i]:.2f}")
+                    print(f"  STD: {math.sqrt(covariances[i]):.2f}")
                     print(f"  Weight: {weights[i]:.5f}")
             return return_means
 
         workers = []
-        for name in self.interval_types:
+        for name in ["filldir64-return:filldir64-enter"]:  # self.interval_types
             try:
                 worker = Process(target=make_histogram, args=[name, [x.time for x in self.intervals[name]], [x.time for x in self.intervals_rootkit[name]]])
                 worker.start()
