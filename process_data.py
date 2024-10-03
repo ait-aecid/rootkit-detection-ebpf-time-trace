@@ -2,6 +2,7 @@ import array
 import json
 from itertools import chain
 from statistics import median
+from typing import Optional
 
 import matplotlib.pyplot as plt
 from multiprocessing import Process
@@ -280,12 +281,13 @@ class Plot:
         plt.grid()
         plt.savefig("baaar" + self.file_date + ".svg")
 
-    def distribution_comparison(self):
+    def distribution_comparison(self, only_interval:Optional[str]=None):
         def make_histogram(name: str, values_a: [int], values_b: [int]) -> None:
             plt.hist(values_a, bins=__unique_vals__(values_a), label="normal")
             plt.hist(values_b, bins=__unique_vals__(values_b), label="with rootkit")
             plt.title(name)
             plt.yscale('log')
+            plt.xlabel('nano seconds')
             plt.legend()
             plt.tight_layout()
             plt.savefig("distribution_comparison_" + self.file_date + "_" + name + ".svg")
@@ -293,9 +295,14 @@ class Plot:
             plt.clf()
 
         workers = []
-        for name in self.interval_types:
+        for name in self.interval_types if only_interval is None else [only_interval]:
             try:
-                worker = Process(target=make_histogram, args=[name, [x.time for x in self.intervals[name]], [x.time for x in self.intervals_rootkit[name]]])
+                data_reference = [x.time for x in self.intervals[name]]
+                data_rootkit = [x.time for x in self.intervals_rootkit[name]]
+                upper_cut = np.mean(data_reference) * 4
+                data_reference = [i for i in data_reference if i < upper_cut]
+                data_rootkit = [i for i in data_rootkit if i < upper_cut]
+                worker = Process(target=make_histogram, args=[name, data_reference, data_rootkit])
                 worker.start()
                 workers.append(worker)
             except KeyError:
