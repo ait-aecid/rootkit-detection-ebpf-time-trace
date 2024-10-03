@@ -1,3 +1,4 @@
+import array
 import json
 from itertools import chain
 from statistics import median
@@ -15,6 +16,7 @@ from skimage.filters import threshold_otsu
 from scipy.stats import median_abs_deviation
 from data_classes import Event, Interval, experiment_from_json
 from sklearn.mixture import GaussianMixture
+from sklearn.cluster import KMeans
 
 def __unique_vals__(lst: list) -> int:
     values = []
@@ -222,6 +224,61 @@ class Plot:
                 pass
         for worker in workers:
             worker.join()
+
+    def split(self, interval: str):
+        data_reference = [interval.time for interval in self.intervals[interval]]
+        data_rootkit = [interval.time for interval in self.intervals_rootkit[interval]]
+        #plt.boxplot(data, labels=["without rootkit", "rootkitted"], patch_artist=True)
+
+        upper_cut = np.mean(data_reference) * 5
+        data_reference = [i for i in data_reference if i < upper_cut]
+
+        data_reference = np.array(data_reference).reshape(-1, 1)
+
+        gmm = GaussianMixture(n_components=10, covariance_type='full')
+        gmm.fit(data_reference)
+
+        labels = gmm.predict(data_reference)
+
+        plt.yscale('log')
+        plt.xlim()
+
+        components = np.unique(labels)
+
+        for i, component in enumerate(components):
+            component_data = data_reference[labels == component]
+            plt.hist(component_data, bins=int(len(component_data)/10))
+
+        plt.savefig("fooo" + self.file_date + ".svg")
+
+    def kmeans(self, interval: str):
+        data_reference = [interval.time for interval in self.intervals[interval]]
+        data_rootkit = [interval.time for interval in self.intervals_rootkit[interval]]
+        # plt.boxplot(data, labels=["without rootkit", "rootkitted"], patch_artist=True)
+
+        upper_cut = np.mean(data_reference) * 5
+        data_reference = [i for i in data_reference if i < upper_cut]
+
+        data = pd.DataFrame(data_reference, columns=['runtime'])
+
+        k = 10
+
+        kmeans = KMeans(n_clusters=k, random_state=42)
+        kmeans.fit(data)
+
+        data['cluster'] = kmeans.fit_predict(data[['runtime']])
+
+        for i in range(k):
+            plt.hist(data[data['cluster'] == i]['runtime'],
+                     bins=15, alpha=0.6, label=f'Cluster {i + 1}', edgecolor='black')
+
+        plt.title('Histogram of Runtimes by Cluster')
+        plt.yscale('log')
+        plt.xlabel('Runtime (ns)')
+        plt.ylabel('Frequency')
+        plt.legend()
+        plt.grid()
+        plt.savefig("baaar" + self.file_date + ".svg")
 
     def distribution_comparison(self):
         def make_histogram(name: str, values_a: [int], values_b: [int]) -> None:
