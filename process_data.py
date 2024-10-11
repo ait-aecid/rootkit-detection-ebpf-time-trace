@@ -2,8 +2,9 @@ import array
 import json
 from itertools import chain
 from statistics import median
-from typing import Optional
+from typing import *
 
+import matplotlib
 import matplotlib.pyplot as plt
 from multiprocessing import Process
 import os
@@ -354,7 +355,7 @@ class Plot:
                 normal = mean(self.intervals[name])
                 rootkit = mean(self.intervals_rootkit[name])
                 name_escaped = name.replace('_', '\_')
-                print(f"{name_escaped} & {normal:.1f} & {rootkit:.1f} & {(rootkit/normal-1)*100:.1f} \\\\")
+                print(f"{name_escaped} & {normal_mean:.1f} & {rootkit_mean:.1f} & {factor_mean*100:.1f} \\\\")
             except KeyError:
                 pass
         print("######################")
@@ -593,3 +594,103 @@ class Plot:
             print("#############################################################")
             print("THIS DATASET DID NOT PASS THE SANITY CHECK! IT MAY MISS DATA!")
             print("#############################################################")
+
+
+    def get_slice_means(self, slices: List[Tuple[int, int]], interval: str) -> List[Tuple[int, int]]:
+
+        data_reference = [x.time for x in self.intervals[interval]]
+        data_rootkit = [x.time for x in self.intervals_rootkit[interval]]
+        upper_cut = np.mean(data_reference) * 4
+        data_reference = [i for i in data_reference if i < upper_cut]
+        data_rootkit = [i for i in data_rootkit if i < upper_cut]
+
+        result_slices = []
+
+        for slice in slices:
+            begin = slice[0]
+            end = slice[1]
+
+            slice_reference = [i for i in data_reference if begin < i < end]
+            slice_rootkit = [i for i in data_rootkit if begin < i < end]
+
+            slice_reference_mean = np.mean(slice_reference)
+            slice_rootkit_mean = np.mean(slice_rootkit)
+
+            print("mean (reference):\t" + str(slice_reference_mean))
+            print("mean (rootkit):\t" + str(slice_rootkit_mean))
+            print("difference:\t" + str(slice_rootkit_mean - slice_reference_mean) + "\n")
+
+            result_slices.append((slice_reference_mean, slice_rootkit_mean))
+
+        return result_slices
+
+
+    def make_result_histogram(self):
+        interval_name = "filldir64-return:filldir64-enter"
+        color_reference = "tab:orange"
+        color_rootkit = "tab:blue"
+
+        data_reference = [x.time for x in self.intervals[interval_name]]
+        data_rootkit = [x.time for x in self.intervals_rootkit[interval_name]]
+        upper_cut = np.mean(data_reference) * 4
+        data_reference = [i for i in data_reference if i < upper_cut]
+        data_rootkit = [i for i in data_rootkit if i < upper_cut]
+
+        plt.hist(data_reference, bins=__unique_vals__(data_reference), label="normal", color=color_reference)
+        plt.hist(data_rootkit, bins=__unique_vals__(data_rootkit), label="with rootkit", color=color_rootkit)
+        plt.title(interval_name)
+        plt.yscale('log')
+        plt.xlabel('nano seconds')
+
+        slice_means = self.get_slice_means([(0, 1650), (3550, 7000), (7000, 10300), (14840, 17440), (18270, 21470)], "filldir64-return:filldir64-enter")
+
+        for slice_mean in slice_means:
+            a = slice_mean[0]
+            b = slice_mean[1]
+            plt.axvline(x=a, linestyle="--", zorder=1, lw=1, color=color_reference)
+            plt.axvline(x=b, linestyle="--", zorder=1, lw=1, color=color_rootkit)
+            plt.plot(slice_mean, [100, 100], color='gray', lw=1, linestyle="-")
+            plt.annotate("{:.1f}".format(b-a), xy=(a + (b-a)/2, 100), xytext=(b+400, 120), arrowprops=dict(arrowstyle='->', color='black', lw=1))
+
+
+
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig("distribution_comparison_" + self.file_date + "_" + interval_name + ".svg")
+        print(interval_name + " saved")
+        plt.clf()
+
+    def get_weighted_overal_slice_mean(self, slices: List[Tuple[int, int]], interval: str) -> Tuple[int, int]:
+
+        data_reference = [x.time for x in self.intervals[interval]]
+        data_rootkit = [x.time for x in self.intervals_rootkit[interval]]
+        upper_cut = np.mean(data_reference) * 4
+        data_reference = [i for i in data_reference if i < upper_cut]
+        data_rootkit = [i for i in data_rootkit if i < upper_cut]
+
+        data_ref_len = 0
+        data_rk_len = 0
+        result_ref = 0
+        result_rk = 0
+
+        for slice in slices:
+            begin = slice[0]
+            end = slice[1]
+
+            slice_reference = [i for i in data_reference if begin < i < end]
+            slice_rootkit = [i for i in data_rootkit if begin < i < end]
+
+            slice_reference_mean = np.mean(slice_reference)
+            slice_rootkit_mean = np.mean(slice_rootkit)
+
+            result_ref += slice_reference_mean * len(slice_reference)
+            result_rk += slice_rootkit_mean * len(slice_rootkit)
+            data_ref_len += len(slice_reference)
+            data_rk_len += len(slice_rootkit)
+
+        result_ref = result_ref / data_ref_len
+        result_rk = result_rk / data_rk_len
+
+        print(f"ref: {result_ref:.1f}, rk: {result_rk:.1f}")
+
+        return (result_ref, result_rk)
