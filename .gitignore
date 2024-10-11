@@ -2,7 +2,9 @@ pypy3_venv
 
 run.py
 
+*.svg
 
 
 __pycache__/
 venv/
+venv3.9/

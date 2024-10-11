@@ -317,10 +317,15 @@ class Plot:
         print("value:standard_deviation #count")
         for name in self.interval_types:
             try:
-                normal_mean = mean(self.intervals[name])
-                normal_std = np.std([i.time for i in self.intervals[name]])
-                rootkit_mean = mean(self.intervals_rootkit[name])
-                rootkit_std = np.std([i.time for i in self.intervals_rootkit[name]])
+                data_reference = [i.time for i in self.intervals[name]]
+                upper_cut = np.mean(data_reference) * 5
+                data_reference = [i for i in data_reference if i < upper_cut]
+                data_rootkited = [i.time for i in self.intervals_rootkit[name]]
+                data_rootkited = [i for i in data_rootkited if i < upper_cut]
+                normal_mean = np.mean(data_reference)
+                normal_std = np.std(data_reference)
+                rootkit_mean = np.mean(data_rootkited)
+                rootkit_std = np.std(data_rootkited)
                 factor_mean = (rootkit_mean/normal_mean-1)
                 print(f"{name.ljust(55)}\t{normal_mean:.1f}:{normal_std:.1f} #{len(self.intervals[name])}\t\t{rootkit_mean:.1f}:{rootkit_std:.1f} #{len(self.intervals_rootkit[name])}\t\t{factor_mean*100:.1f}")
 
@@ -352,8 +357,14 @@ class Plot:
         print(f"name\tnormal\t\trootkitted\tpercent slower")
         for name in self.interval_types:
             try:
-                normal = mean(self.intervals[name])
-                rootkit = mean(self.intervals_rootkit[name])
+                data_reference = [i.time for i in self.intervals[name]]
+                upper_cut = np.mean(data_reference) * 5
+                data_reference = [i for i in data_reference if i < upper_cut]
+                data_rootkited = [i.time for i in self.intervals_rootkit[name]]
+                data_rootkited = [i for i in data_rootkited if i < upper_cut]
+                normal_mean = np.mean(data_reference)
+                rootkit_mean = np.mean(data_rootkited)
+                factor_mean = (rootkit_mean / normal_mean - 1)
                 name_escaped = name.replace('_', '\_')
                 print(f"{name_escaped} & {normal_mean:.1f} & {rootkit_mean:.1f} & {factor_mean*100:.1f} \\\\")
             except KeyError:
