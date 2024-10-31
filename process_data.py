@@ -311,6 +311,16 @@ class Plot:
         for worker in workers:
             worker.join()
 
+    def export_intervals_to_csv(self):
+        with open(self.file_date + '.csv', 'w+') as out:
+            out.write('name,id,delta,pid,tgit,class\n')
+            for name, interv in self.intervals.items():
+                for cnt, i in enumerate(interv):
+                    out.write(str(name) + ',' + str(cnt) + ',' + str(i.time) + ',' + str(i.pid) + ',' + str(i.tgid) + ',Normal' + '\n')
+            for name, interv in self.intervals_rootkit.items():
+                for cnt, i in enumerate(interv):
+                    out.write(str(name) + ',' + str(cnt) + ',' + str(i.time) + ',' + str(i.pid) + ',' + str(i.tgid) + ',Anomaly' + '\n')
+
     def interval_means(self):
         print("####interval means####")
         print(f"{'name'.ljust(55)}\tnormal\t\trootkitted\tpercent slower")
