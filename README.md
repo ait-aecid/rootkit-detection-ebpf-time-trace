@@ -8,8 +8,8 @@
 
 ### `experiment.sh`
 
-Shell file for running an experiment by providing a remote target to conduct the experiment on, ssh key acces is assumed.
-Result file will be copied to the local working directory and a run of data procesing will be conducted.
+Shell file for running an experiment by providing a remote target to conduct the experiment on, ssh key access is assumed.
+Result file will be copied to the local working directory and a run of data processing will be conducted.
 
 * `-e` Specify executable, e.g. `/usr/bin/ls`
 
@@ -20,23 +20,22 @@ since insertion of eBPF probes and loading of the rootkit requires so.
 
 ### `run.py`
 
-Call this with a data file (obtained via `user.py` / `experiment.sh`) and comment in the wanted processing.
+Call this with a data file (obtained via `user.py` / `experiment.sh`) and comment in the desired processing method.
 
 ### `process_data.py:Plot`
 
-Feed a data file to this to construct the in memory representation from points to intervals and conduct all sorts of representations.
+Feed a data file to this to construct the in-memory representation from points to intervals and conduct all sorts of representations.
 
 ### `user.py`
 
-Heart of the project.
-This performs the experiment.
+This is the heart of the project that performs the experiment.
 
-At the top of the file specify functions at who's enter and return points the probes shall be inserted.
+At the top of the file, specify functions for which probes will be inserted at their enter and return points.
 
 Define the structure of the experiment directory here.
 
 The script goes on to insert the eBPF probes via the help of BCC.
-Then it runs the executable i times, while collecting the timestamps of the probes.
+Then it runs the executable `i` times, while collecting the timestamps of the probes.
 After that it loads the rootkit, runs the executable again itimes and collects the stamps.
 Lastly it saves the data into gzip compressed json file.
 
@@ -48,7 +47,7 @@ The eBPF probe code.
 
 Helper functions.
 
-Define the path of the rootkit, where it is saved on the target system here.
+Define the path where the rootkit is saved on the target system.
 
 ### `data_classes.py`
 
