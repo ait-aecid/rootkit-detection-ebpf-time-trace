@@ -92,3 +92,23 @@ Python definition of the json data structure of the experiment.
   "events_rootkit": [...]
  }
 ```
+
+## Installation
+
+Install BCC according to your distro, see https://github.com/iovisor/bcc/blob/master/INSTALL.md
+
+On debian that would be: `sudo apt-get install bpfcc-tools linux-headers-$(uname -r)`.
+
+Then fulfill the python dependencies: `pip install -r requirements.txt`.
+
+## Run
+
+> Make sure the rootkit is available in compiled form on the target and the path set in `linux.py`.
+
+On the target machine, execute the experiment:
+`python detection.py --normal --rootkit --iterations 100 --executable ./my_custom_ls "My first experiment"`.
+
+This will create a datafile `experimentTimeStamp.json.gz`.
+
+Then, to perform analysis over the data, feed the file to an instance of `process_data.py:Plot`,
+or simply run `run.py`.

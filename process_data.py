@@ -17,8 +17,6 @@ import pandasql as psql
 from skimage.filters import threshold_otsu
 from scipy.stats import median_abs_deviation
 from data_classes import Event, Interval, experiment_from_json
-from sklearn.mixture import GaussianMixture
-from sklearn.cluster import KMeans
 
 def __unique_vals__(lst: list) -> int:
     values = []
@@ -145,77 +143,6 @@ class Plot:
             plot_processes.append(worker)
 
         for worker in plot_processes:
-            worker.join()
-
-    def distribution_split(self):
-        def make_histogram(name: str, values_a: [int], values_b: [int]) -> None:
-            means_a = split_gaussian_mixture(name, values_a, "normal")
-            means_b = split_gaussian_mixture(name, values_b, "with rootkit")
-            plt.hist(values_a, bins=__unique_vals__(values_a), label="normal")
-            plt.hist(values_b, bins=__unique_vals__(values_b), label="with rootkit")
-            for mean_a in means_a:
-                plt.axvline(mean_a, color='blue', linestyle='dashed', linewidth=1)
-            for mean_b in means_b:
-                plt.axvline(mean_b, color='red', linestyle='dotted', linewidth=1)
-            plt.xlim(0, max(means_a + means_b) * 2)
-            plt.title(name)
-            plt.yscale('log')
-            plt.legend()
-            plt.tight_layout()
-            plt.savefig("distribution_split_" + self.file_date + "_" + name + ".svg")
-            print(name + " saved")
-            plt.clf()
-
-        def split_gaussian_mixture(name: str, values: [int], rk) -> None:
-            data = np.array(values)
-            data = data.reshape(-1, 1)
-            n_components_range = range(1, 11)
-            bics = []
-            for n_components in n_components_range:
-                gmm = GaussianMixture(n_components=n_components, random_state=42)
-                gmm.fit(data)
-                bics.append(gmm.bic(data))
-
-            # Find the optimal number of components
-            optimal_n_components = n_components_range[np.argmin(bics)]
-            #print(f"Optimal number of components: {optimal_n_components}")
-
-            # Fit the final GMM with the optimal number of components
-            gmm = GaussianMixture(n_components=optimal_n_components, random_state=42)
-            gmm.fit(data)
-
-            # Get the means, covariances, and weights of the GMM components
-            means = gmm.means_.flatten()
-            covariances = gmm.covariances_.flatten()
-            weights = gmm.weights_
-
-            # Filter out components with weights below the threshold
-            weight_threshold = 0.001 # Components with less than that of the total data will be discarded
-            var_threshold = 80000000 # Components with higher variances will be discarded
-            valid_components = (weights > weight_threshold) & (covariances < var_threshold)
-
-            # Print the parameters of the valid components
-            return_means = []
-            print(name + " " + rk)
-            for i, valid in enumerate(valid_components):
-                if valid:
-                    return_means.append(means[i])
-                    #print(f"Component {i + 1}:")
-                    print(f"  Mean: {means[i]:.2f}")
-                    print(f"  Variance: {covariances[i]:.2f}")
-                    print(f"  STD: {math.sqrt(covariances[i]):.2f}")
-                    print(f"  Weight: {weights[i]:.5f}")
-            return return_means
-
-        workers = []
-        for name in ["filldir64-return:filldir64-enter"]:  # self.interval_types
-            try:
-                worker = Process(target=make_histogram, args=[name, [x.time for x in self.intervals[name]], [x.time for x in self.intervals_rootkit[name]]])
-                worker.start()
-                workers.append(worker)
-            except KeyError:
-                pass
-        for worker in workers:
             worker.join()
 
     def split(self, interval: str):
