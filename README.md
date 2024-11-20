@@ -11,10 +11,10 @@
 ````commandline
 usage: detection.py [-h] [--iterations ITERATIONS] [--executable EXECUTABLE]
                     [--normal] [--rootkit]
-                    ...
+                    DESCRIPTION
 
 positional arguments:
-  description           Description of the current experiment, this will be
+  DESCRIPTION           Description of the current experiment, this will be
                         saved in the output's metadata.
 
 options:
@@ -81,10 +81,14 @@ Python definition of the json data structure of the experiment.
 
 ```
 {
-  "executable": "./getpid_opendir_readdir_root",
-  "iterations": 10,
+  "executable": "ls",
+  "iterations": 100,
+  "dir_content": ".,..,hide_me_caraxes_asdf,see_me_123,",
   "linux_version": "6.5.0-35-generic",
+  "description": [],
+  "experiment_begin": "2024-...",
+  "experiment_end": "2024-...",
   "events": [...],
   "events_rootkit": [...]
-}
+ }
 ```
