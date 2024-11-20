@@ -2,18 +2,19 @@ import sys
 from process_data import Plot
 
 try:
-    filename = sys.argv[1]
+    filename_a = sys.argv[1]
+    filename_b = sys.argv[2]
 except IndexError:
     # get the most recent experiment file...
     files = [f for f in os.listdir('.') if os.path.isfile(os.path.join('.', f))]
     outputs = [file for file in files if re.match(r'^experiment.*\.json.gz$', file)]
     outputs.sort()
-    filename = outputs.pop()
+    filename_a = outputs.pop()
+    filename_b = outputs.pop()
 
-plot = Plot(filename)
+plot = Plot(filename_a, filename_b)
 
 plot.sanity_check()
-
 
 #plot.split("filldir64-return:filldir64-enter")
 #plot.kmeans("filldir64-return:filldir64-enter")

@@ -49,25 +49,37 @@ class Plot:
     event_count = {}
     event_count_rootkit = {}
 
-    def __init__(self, filename):
+    def __init__(self, filename_a, filename_b):
 
-        with gzip.open(filename, 'r') as file:
+        file_a_rootkit = False
+        with gzip.open(filename_a, 'r') as file:
             json_obj = json.load(file)
             experiment = experiment_from_json(json_obj)
             self.experiment = experiment
-            self.events = experiment.events
-            self.events_rootkit = experiment.events_rootkit
+            if self.experiment.label == "rootkit":
+                self.events_rootkit = experiment.events
+                file_a_rootkit = True
+            else:
+                self.events = experiment.events
 
-        self.file_date = filename.replace("experiment", "").replace(".json", "").replace(".gz", "")
+        with gzip.open(filename_b, 'r') as file:
+            json_obj = json.load(file)
+            experiment = experiment_from_json(json_obj)
+            if file_a_rootkit:
+                self.events = experiment.events
+            else:
+                self.events_rootkit = experiment.events
 
-        for event in experiment.events:
+        self.file_date = filename_a.replace("events/", "").replace("experiment", "").replace(".json", "").replace(".gz", "")
+
+        for event in self.events:
             try:
                 self.processes[event.pid]
             except KeyError:
                 self.processes[event.pid] = []
             self.processes[event.pid].append(event)
 
-        for event in experiment.events_rootkit:
+        for event in self.events_rootkit:
             try:
                 self.processes_rootkit[event.pid]
             except KeyError:
@@ -209,7 +221,7 @@ class Plot:
             plt.xlabel('nano seconds')
             plt.legend()
             plt.tight_layout()
-            plt.savefig("distribution_comparison_" + self.file_date + "_" + name + ".svg")
+            plt.savefig("distribution_comparison_" + self.file_date + "_" + name + ".pdf")
             print(name + " saved")
             plt.clf()
 
@@ -595,7 +607,7 @@ class Plot:
 
         plt.legend()
         plt.tight_layout()
-        plt.savefig("distribution_comparison_" + self.file_date + "_" + interval_name + ".svg")
+        plt.savefig("distribution_comparison_" + self.file_date + "_" + interval_name + ".pdf")
         print(interval_name + " saved")
         plt.clf()
 
