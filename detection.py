@@ -1,6 +1,7 @@
 from bcc import BPF
 import os
 import sys
+from datetime import datetime
 import argparse
 import threading
 import subprocess
@@ -28,29 +29,43 @@ probe_points = [
     #"__f_unlock_pos"
 ]
 
-#stop = False
-#threads = []
 programs = {}
 detection_PIDs = []
 output = []
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--iterations", "-i", default=100, type=int, help="Number of times to run the experiment.")
-parser.add_argument("--executable", "-e", default="./getpid_opendir_readdir_proc", type=str, help="Provide an executable for the experiment.")
+parser.add_argument("--executable", "-e", default="ls", type=str, help="Provide an executable for the experiment.")
+parser.add_argument("--normal", "-n", action='store_true', help="Run the normal execution, without anomalies.")
+parser.add_argument("--rootkit", "--anormal", "-r", "-a", action='store_true', help="Run the anormal execution, with rootkit.")
+parser.add_argument('description', help="Description of the current experiment, this will be saved in the output's metadata.", nargs=argparse.REMAINDER)
 
 args = parser.parse_args()
+
+if args.normal is False and args.rootkit is False:
+    msg = """
+    You have to select the types of executions to do.
+    At leas one of --normal and --rootkit.
+    """
+    print(msg, file=sys.stderr)
+    parser.print_help()
+    exit(1)
 
 # setup directory structure
 DIR_NAME = 'test_dir_' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
 VISIBLE_FILE = "see_me_123"
-HIDDEN_FILE = "hide_me_asdf"
+HIDDEN_FILE = "hide_me_caraxes_asdf"
 shell("mkdir " + DIR_NAME)  # in the CWD is fine
 shell("touch " + DIR_NAME + "/" + HIDDEN_FILE)
 shell("touch " + DIR_NAME + "/" + VISIBLE_FILE)
 
 dir_content = shell("ls -a1 " + DIR_NAME).replace("\n", ",")
 
-experiment = Experiment(args.executable, args.iterations, dir_content, os.uname().release, [], [])
+experiment = Experiment(executable=args.executable,
+                        iterations=args.iterations,
+                        dir_content=dir_content,
+                        linux_version=os.uname().release,
+                        description=args.description)
 
 for probe_point in probe_points:
     program_src = open("kernel.c").read()
@@ -113,92 +128,98 @@ print("")  # newline
 
 print(f"Running experiment with {experiment.executable} for {experiment.iterations} times.", file=sys.stderr)
 
-# make sure the rootkit is not loaded
-if ROOTKIT_NAME in list_modules():
-    print("rootkit was loaded! removing it...")
-    remove_rootkit()
+experiment.experiment_begin = datetime.now().isoformat()
 
-#stress_process = run_background("stress-ng --cpu 10")
+if args.normal:
+    # make sure the rootkit is not loaded
+    if ROOTKIT_NAME in list_modules():
+        print("rootkit was loaded! removing it...")
+        remove_rootkit()
 
-finished = False
-detection_thread = threading.Thread(target=run_detection, args=[args.iterations, True])
-detection_thread.start()
+    #stress_process = run_background("stress-ng --cpu 10")
 
-poll_count = 0
-while not finished:
-    for probe_point, bpf_prog in programs.items():
-        poll_count += 1
-        bpf_prog.ring_buffer_poll(5)
-    sleep(0.0005)  # sleep for 5 milliseconds, then check the buffers again
-print(f"polled {poll_count} times!", file=sys.stderr)
+    finished = False
+    detection_thread = threading.Thread(target=run_detection, args=[args.iterations, True])
+    detection_thread.start()
 
-detection_thread.join()
-#stress_process.kill()
+    poll_count = 0
+    while not finished:
+        for probe_point, bpf_prog in programs.items():
+            poll_count += 1
+            bpf_prog.ring_buffer_poll(5)
+        sleep(0.0005)  # sleep for 5 milliseconds, then check the buffers again
+    print(f"polled {poll_count} times!", file=sys.stderr)
 
-print("done with the \"no rootkit version\"", file=sys.stderr)
+    detection_thread.join()
+    #stress_process.kill()
 
-output = sorted(output)  # sort by timestamp
+    print("done with the \"no rootkit version\"", file=sys.stderr)
 
-output = [event for event in output if event.pid in detection_PIDs]
+    output = sorted(output)  # sort by timestamp
 
-# normalize time
-first = output[0].timestamp
-for event in output:
-    event.timestamp -= first
+    output = [event for event in output if event.pid in detection_PIDs]
 
-# save events without rootkit
-experiment.events = output
+    # normalize time
+    first = output[0].timestamp
+    for event in output:
+        event.timestamp -= first
+
+    # save events without rootkit
+    experiment.events = output
 
 
 
 # --------------------------
 
+if args.rootkit:
+    # let's do the same thing again but with rootkit
 
-# let's do the same thing again but with rootkit
-print("loading rootkit...", file=sys.stderr)
-insert_rootkit()
+    if not ROOTKIT_NAME in list_modules():
+        print("loading rootkit...", file=sys.stderr)
+        insert_rootkit()
+    else:
+        print("rootkit was already loaded! that's weird...")
 
-# reset global vars
-output = []
-finished = False
+    # reset global vars
+    output = []
+    finished = False
 
-#stress_process = run_background("stress-ng --cpu 10")
+    #stress_process = run_background("stress-ng --cpu 10")
 
-detection_thread = threading.Thread(target=run_detection, args=[args.iterations, False])
-detection_thread.start()
+    detection_thread = threading.Thread(target=run_detection, args=[args.iterations, False])
+    detection_thread.start()
 
-print(f"finished: {finished}", file=sys.stderr)
+    print(f"finished: {finished}", file=sys.stderr)
 
-poll_count = 0
-while not finished:
-    for probe_point, bpf_prog in programs.items():
-        poll_count += 1
-        bpf_prog.ring_buffer_poll(5)
-    sleep(0.0005)  # sleep for 5 milliseconds, then check the buffers again
-print(f"polled {poll_count} times!", file=sys.stderr)
+    poll_count = 0
+    while not finished:
+        for probe_point, bpf_prog in programs.items():
+            poll_count += 1
+            bpf_prog.ring_buffer_poll(5)
+        sleep(0.0005)  # sleep for 5 milliseconds, then check the buffers again
+    print(f"polled {poll_count} times!", file=sys.stderr)
 
-detection_thread.join()
-#stress_process.kill()
+    detection_thread.join()
+    #stress_process.kill()
 
-print("done with the \"rootkit version\"", file=sys.stderr)
+    print("done with the \"rootkit version\"", file=sys.stderr)
 
-output = sorted(output)  # sort by timestamp
+    output = sorted(output)  # sort by timestamp
 
-output = [event for event in output if event.pid in detection_PIDs]
+    output = [event for event in output if event.pid in detection_PIDs]
 
-# normalize time
-first = output[0].timestamp
-for event in output:
-    event.timestamp -= first
+    # normalize time
+    first = output[0].timestamp
+    for event in output:
+        event.timestamp -= first
 
-# save events without rootkit
-experiment.events_rootkit = output
+    # save events with rootkit
+    experiment.events_rootkit = output
 
+    # we are done
+    remove_rootkit()
 
-# we are done
-
-remove_rootkit()
-
+experiment.experiment_end = datetime.now().isoformat()
 
 # detach all bpf probes
 for bpf_prog in programs.values():
@@ -210,9 +231,8 @@ shell("rm -rf " + DIR_NAME)
 print("Experiment finished, saving output.", file=sys.stderr)
 
 import json
-from datetime import datetime
 
-filename = "output" + datetime.now().isoformat() + ".json.gz"
+filename = "experiment" + datetime.now().isoformat() + ".json.gz"
 with gzip.open(filename, 'w', compresslevel=1) as file:
     file.write(json.dumps(experiment, default=vars).encode())
 

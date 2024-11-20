@@ -1,8 +1,8 @@
 import subprocess
 import sys
 
-ROOTKIT_NAME = "rk"
-KERNEL_OBJECT_PATH = "/home/ubuntu/generic-linux-rootkit/src/"
+ROOTKIT_NAME = "caraxes"
+KERNEL_OBJECT_PATH = "/home/ubuntu/caraxes/"
 
 
 def list_modules() -> [str]:

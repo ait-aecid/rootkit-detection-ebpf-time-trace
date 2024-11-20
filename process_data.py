@@ -56,9 +56,9 @@ class Plot:
         try:
             filename = args[1]
         except IndexError:
-            # get the most recent output file...
+            # get the most recent experiment file...
             files = [f for f in os.listdir('.') if os.path.isfile(os.path.join('.', f))]
-            outputs = [file for file in files if re.match(r'^output.*\.json.gz$', file)]
+            outputs = [file for file in files if re.match(r'^experiment.*\.json.gz$', file)]
             outputs.sort()
             filename = outputs.pop()
 
@@ -69,7 +69,7 @@ class Plot:
             self.events = experiment.events
             self.events_rootkit = experiment.events_rootkit
 
-        self.file_date = filename.replace("output", "").replace(".json", "").replace(".gz", "")
+        self.file_date = filename.replace("experiment", "").replace(".json", "").replace(".gz", "")
 
         for event in experiment.events:
             try:
