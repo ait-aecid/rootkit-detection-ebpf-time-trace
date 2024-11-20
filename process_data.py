@@ -51,16 +51,7 @@ class Plot:
     event_count = {}
     event_count_rootkit = {}
 
-    def __init__(self, args):
-        self.args = args
-        try:
-            filename = args[1]
-        except IndexError:
-            # get the most recent experiment file...
-            files = [f for f in os.listdir('.') if os.path.isfile(os.path.join('.', f))]
-            outputs = [file for file in files if re.match(r'^experiment.*\.json.gz$', file)]
-            outputs.sort()
-            filename = outputs.pop()
+    def __init__(self, filename):
 
         with gzip.open(filename, 'r') as file:
             json_obj = json.load(file)

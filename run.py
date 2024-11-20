@@ -1,7 +1,16 @@
 import sys
 from process_data import Plot
 
-plot = Plot(sys.argv)
+try:
+    filename = sys.argv[1]
+except IndexError:
+    # get the most recent experiment file...
+    files = [f for f in os.listdir('.') if os.path.isfile(os.path.join('.', f))]
+    outputs = [file for file in files if re.match(r'^experiment.*\.json.gz$', file)]
+    outputs.sort()
+    filename = outputs.pop()
+
+plot = Plot(filename)
 
 plot.sanity_check()
 

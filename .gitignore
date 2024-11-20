@@ -4,6 +4,11 @@ run.py
 
 *.svg
 
+.idea/
+
+*.json.gz
+*.json
+*.csv
 
 __pycache__/
 venv/
