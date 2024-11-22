@@ -67,6 +67,7 @@ def experiment_from_json(input: dict) -> Experiment:
                       dir_content=input["dir_content"],
                       linux_version=input["linux_version"],
                       description=input["description"],
+                      label=input["label"],
                       experiment_begin=input["experiment_begin"],
                       experiment_end=input["experiment_end"],
                       events=[Event(**elem) for elem in input["events"]])
