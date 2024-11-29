@@ -122,11 +122,11 @@ def shift_detection(train_quantiles_dict, test, quantiles):
         test_quantiles = np.quantile(test[name], quantiles)
         #diff = np.subtract(test_quantiles, train_quantiles)
         diff = np.subtract(test_quantiles, train_quantiles) # / np.median(train_quantiles) #np.divide(np.subtract(test_quantiles, train_quantiles), train_quantiles)
-        #if name == "filldir64-return:filldir64-enter":
+        if name == "filldir64-return:filldir64-enter":
         #    #print(train_quantiles)
         #    #print(test_quantiles)
-        #    #print(diff)
-        #    return diff
+            print(diff)
+            return diff
 
 
 def run_test(train, test_norm, test_anom, quantiles):
