@@ -229,6 +229,9 @@ shell("rm -rf " + DIR_NAME)
 
 print("Experiment finished, saving output.", file=sys.stderr)
 
+if not os.path.exists("events"):
+    os.makedirs("events")
+
 import json
 
 filename = "events/events_" + datetime.now().isoformat() + ".json.gz"
