@@ -6,10 +6,10 @@
 
 ## Structure
 
-### `detection.py`
+### `probing.py`
 
 ````commandline
-usage: detection.py [-h] [--iterations ITERATIONS] [--executable EXECUTABLE]
+usage: probing.py [-h] [--iterations ITERATIONS] [--executable EXECUTABLE]
                     [--normal] [--rootkit]
                     DESCRIPTION
 
@@ -59,7 +59,7 @@ since insertion of eBPF probes and loading of the rootkit requires so.
 
 ### `run.py`
 
-Call this with a data file (obtained via `user.py` / `experiment.sh`) and comment in the desired processing method.
+Call this with a data file (obtained via `probing.py` / `experiment.sh`) and comment in the desired processing method.
 
 ### `process_data.py:Plot`
 
