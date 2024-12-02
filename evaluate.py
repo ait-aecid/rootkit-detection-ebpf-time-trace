@@ -11,12 +11,16 @@ import os
 import re
 import gzip
 import math
+import time
 import random
+import json
 import numpy as np
 import pandas as pd
-import pandasql as psql
+#import pandasql as psql
 from data_classes import Event, Interval, experiment_from_json
 from scipy.stats import ttest_ind
+from scipy.stats import wasserstein_distance_nd
+from scipy.stats import norm
 
 class Intervals:
     def __init__(self, filename):
@@ -199,24 +203,45 @@ def get_diffs(batches_a, batches_b, quantiles):
                     diffs[name][q].append(diff[i])
     return diffs
 
-def get_p_vals(diffs_a, diffs_b, quantiles):
-    p_vals = {}
+def get_quantile_vals(batches, quantiles):
+    vals = {}
+    for batch in batches:
+        for name, interv_list in batch.intervals_time.items():
+            if name not in vals:
+                vals[name] = {}
+                for q in quantiles:
+                    vals[name][q] = []
+            interv_list_quantiles = np.quantile(interv_list, quantiles)
+            for i, q in enumerate(quantiles):
+                vals[name][q].append(interv_list_quantiles[i])
+    return vals
+
+def get_crits(vals_a, vals_b, quantiles):
+    crits = {}
     anom = False
-    for name in set(diffs_a.keys()).intersection(set(diffs_b.keys())):
-        p_vals[name] = {}
+    for name in set(vals_a.keys()).intersection(set(vals_b.keys())):
+        crits[name] = {}
         for q in quantiles:
-            #if len(diffs_a[name][q]) < 10 or len(diffs_b[name][q]) < 10:
+            #if len(vals_a[name][q]) < 10 or len(vals_b[name][q]) < 10:
             #    continue
-            t_stat, p_val = ttest_ind(diffs_a[name][q], diffs_b[name][q])
-            p_vals[name][q] = p_val
-            if p_val < 1e-20:
-                anom = True
-                print(name, q, p_val)
-    return p_vals, anom
+            #t_stat, p_val = ttest_ind(vals_a[name][q], vals_b[name][q])
+            #print(len(vals_b[name][q]), len(vals_a[name][q]))
+            if len(vals_a[name][q]) < 5:
+                continue
+            # cdf has mean at 0.5 and min/max at 0/1; compute score that is 1 at the mean and approaches 0 at the tails
+            crit = 1 - 2 * np.abs(norm.cdf(vals_b[name][q], loc=np.mean(vals_a[name][q]), scale=np.std(vals_a[name][q])) - 0.5)
+            crits[name][q] = crit
+            #if crit <= 1: #0.001: #1e-20:
+            ##    anom = True
+            #    print(name, q, crit)
+            #    print(" " + str(vals_a[name][q]))
+            #    print(" " + str(vals_b[name][q]))
+    return crits #, anom
 
 def run_test(train, test_norm, test_anom, quantiles):
     # Generate model by computing shifts between pairs of batches
-    train_diffs = get_diffs(train, train, quantiles)
+    #train_diffs = get_diffs(train, train, quantiles)
+    train_vals = get_quantile_vals(train, quantiles)
     #for train_batch in train:
     #    for name, interv_list in train_batch.intervals_time.items():
     #        interv_list_quantiles = np.quantile(interv_list, quantiles)
@@ -232,15 +257,16 @@ def run_test(train, test_norm, test_anom, quantiles):
     #                train_merge[name] = diff
     #print(train_diffs)
 
-    tp, fp, tn, fn = 0, 0, 0, 0
+    #tp, fp, tn, fn = 0, 0, 0, 0
     # Test normal data
-    for test_norm_batch in test_norm:
-        test_norm_diffs = get_diffs(train, [test_norm_batch], quantiles)
-        p_vals, anom = get_p_vals(train_diffs, test_norm_diffs, quantiles)
-        if anom:
-            fp += 1
-        else:
-            tn += 1
+    #for test_norm_batch in test_norm:
+    #    #test_norm_diffs = get_diffs(train, [test_norm_batch], quantiles)
+    #    test_norm_vals = get_quantile_vals([test_norm_batch], quantiles)
+    #    p_vals, anom = get_p_vals(train_vals, test_norm_vals, quantiles)
+    #    if anom:
+    #        fp += 1
+    #    else:
+    #        tn += 1
     #for name in set(train_diffs.keys()).intersection(set(test_norm_diffs.keys())):
     #    for q in quantiles:
     #        t_stat, p_val = ttest_ind(train_diffs[name][q], test_norm_diffs[name][q])
@@ -253,18 +279,72 @@ def run_test(train, test_norm, test_anom, quantiles):
     #    print(test_norm_batch.experiment.label + ': ' + str(np.median(x)) + ", " + str(np.std(x)))
 
     # Test anomalous data
-    print("anom")
-    for test_anom_batch in test_anom:
-        test_anom_diffs = get_diffs(train, [test_anom_batch], quantiles)
-        p_vals, anom = get_p_vals(train_diffs, test_anom_diffs, quantiles)
-        if anom:
-            tp += 1
-        else:
-            fn += 1
+    #exit()
+    #print("\nanom\n")
+    #for test_anom_batch in test_anom:
+    #    #test_anom_diffs = get_diffs(train, [test_anom_batch], quantiles)
+    #    test_anom_vals = get_quantile_vals([test_anom_batch], quantiles)
+    #    p_vals, anom = get_p_vals(train_vals, test_anom_vals, quantiles)
+    #    if anom:
+    #        tp += 1
+    #    else:
+    #        fn += 1
     #for test_anom_batch in test_anom:
     #    x = shift_detection(train_quantiles, test_anom_batch.intervals_time, quantiles)
     #    print(test_anom_batch.experiment.label + ': ' + str(np.median(x)) + ", " + str(np.std(x)))
-    print_results("test", tp, fn, tn, fp, -1, -1)
+    crits_norm, crits_anom = [], []
+    for test_norm_batch in test_norm:
+        test_norm_vals = get_quantile_vals([test_norm_batch], quantiles)
+        crits_norm.append(get_crits(train_vals, test_norm_vals, quantiles))
+        #exit()
+    #print(crits_norm)
+    for test_anom_batch in test_anom:
+        test_anom_vals = get_quantile_vals([test_anom_batch], quantiles)
+        crits_anom.append(get_crits(train_vals, test_anom_vals, quantiles))
+    best_metrics = {"fone": None, "tp": None, "fp": None, "tn": None, "fn": None, "time": None, "thresh": None}
+    for thresh in np.logspace(-30, 0, num=100):
+        start_time = time.time()
+        tp, fp, tn, fn = 0, 0, 0, 0
+        for batch_crits in crits_norm:
+            anom = False
+            for name, quantile_dict in batch_crits.items():
+                for q, crit in quantile_dict.items():
+                    if crit < thresh:
+                        #print(crit)
+                        anom = True
+                        break
+                if anom:
+                    break
+            if anom:
+                fp += 1
+            else:
+                tn += 1
+        for batch_crits in crits_anom:
+            anom = False
+            for name, quantile_dict in batch_crits.items():
+                for q, crit in quantile_dict.items():
+                    if crit < thresh:
+                        #print(crit)
+                        anom = True
+                        break
+                if anom:
+                    break
+            if anom:
+                tp += 1
+            else:
+                fn += 1
+        fone = get_fone(tp, fn, tn, fp)
+        #print(thresh, fone)
+        total_time = time.time() - start_time
+        if best_metrics["fone"] is None or fone >= best_metrics["fone"]:
+            best_metrics["fone"] = fone
+            best_metrics["tp"] = tp
+            best_metrics["fp"] = fp
+            best_metrics["tn"] = tn
+            best_metrics["fn"] = fn
+            best_metrics["time"] = total_time
+            best_metrics["thresh"] = thresh
+    print_results("test", best_metrics["tp"], best_metrics["fn"], best_metrics["tn"], best_metrics["fp"], best_metrics["thresh"], best_metrics["time"])
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--directory", "-d", default="events", type=str, help="Directory containing event data.")
