@@ -12,6 +12,8 @@ from time import sleep
 from data_classes import Event, Experiment
 from linux import shell, insert_rootkit, remove_rootkit, list_modules, ROOTKIT_NAME, run_background
 
+MAGIC_STRING = "caraxes"
+
 probe_points = [
     #"do_sys_openat2",
     #"x64_sys_call",  # maybe this only works as a retprobe: 'cannot attach kprobe, probe entry may not exist' <- Linux < 6.5
@@ -37,10 +39,12 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--iterations", "-i", default=100, type=int, help="Number of times to run the experiment.")
 parser.add_argument("--executable", "-e", default="ls", type=str, help="Provide an executable for the experiment.")
 parser.add_argument("--normal", "-n", action='store_true', help="Run the normal execution, without anomalies.")
-parser.add_argument("--rootkit", "--anormal", "-r", "-a", action='store_true', help="Run the abnormal execution, with rootkit.")
+parser.add_argument("--rootkit", "--anomalous", "-r", "-a", action='store_true', help="Run the anomalous execution, with rootkit.")
 parser.add_argument("--drop-boundary-events", "-d", action='store_true', help="Drop all events of the first and last PID of each run.\nThese events often miss data.\nMay lead to empty output file if runs <= 2.")
-parser.add_argument('--load', "-l", nargs="?", const="stress-ng --cpu 10", help="Put the system under load during the experiment. You can provide a custom executable to do so. Default is 'stress-ng --cpu 10'. Consider shell escaping.")
-parser.add_argument('description', help="Description of the current experiment, this will be saved in the output's metadata.", nargs=argparse.REMAINDER)
+parser.add_argument("--load", "-l", nargs="?", const="stress-ng --cpu 10", help="Put the system under load during the experiment. You can provide a custom executable to do so. Default is 'stress-ng --cpu 10'. Consider shell escaping.")
+parser.add_argument("--hidden-files", default=1, type=int, help="Specify the number of hidden files to create.")
+parser.add_argument("--visible-files", default=1, type=int, help="Specify the number of visible files to create.")
+parser.add_argument("description", help="Description of the current experiment, this will be saved in the output's metadata.", nargs=argparse.REMAINDER)
 
 args = parser.parse_args()
 
@@ -51,13 +55,23 @@ if args.normal is False and args.rootkit is False:
 
 # setup directory structure
 DIR_NAME = 'test_dir_' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
-VISIBLE_FILE = "see_me_123"
-HIDDEN_FILE = "hide_me_caraxes_asdf"
+
 shell("mkdir " + DIR_NAME)  # in the CWD is fine
-shell("touch " + DIR_NAME + "/" + HIDDEN_FILE)
-shell("touch " + DIR_NAME + "/" + VISIBLE_FILE)
+
+for i in range(args.visible_files):
+    len = 12
+    name = ''.join(random.choices(string.ascii_uppercase + string.digits, k=len))
+    shell("touch " + DIR_NAME + "/" + name)
+
+for i in range(args.hidden_files):
+    len = 8
+    name = ''.join(random.choices(string.ascii_uppercase + string.digits, k=len))
+    index = int(random.random() * (len+1))
+    name = name[0:index] + "_" + MAGIC_STRING + "_" + name[index:len]
+    shell("touch " + DIR_NAME + "/" + name)
 
 dir_content = shell("ls -a1 " + DIR_NAME).replace("\n", ",")
+
 
 experiment = Experiment(executable=args.executable,
                         iterations=args.iterations,
@@ -105,7 +119,7 @@ def run_detection_once(error_on_hidden: bool) -> None:
     process = subprocess.Popen([args.executable, DIR_NAME], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = process.communicate()
     stdout_str = stdout.decode('utf-8')
-    if (HIDDEN_FILE in stdout_str) != error_on_hidden:
+    if (MAGIC_STRING in stdout_str) != error_on_hidden:
         raise Exception("rootkit failed! error_on_hidden: " + str(error_on_hidden) + "; ls result: <" + stdout_str.replace('\n','+') + ">")
     detection_PIDs.append(process.pid)
     print("detection_PID: %i" % process.pid, file=sys.stderr)

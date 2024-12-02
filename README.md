@@ -26,8 +26,8 @@ options:
                         Provide an executable for the experiment.
                         Default is 'ls'.
   --normal, -n          Run the normal execution, without anomalies.
-  --rootkit, --anormal, -r, -a
-                        Run the abnormal execution, with rootkit.
+  --rootkit, --anomalous, -r, -a
+                        Run the anomalous execution, with rootkit.
   --drop-boundary-events, -d
                         Drop all events of the first and last PID of each run.
                         These events often miss data. May lead to empty output
@@ -36,6 +36,12 @@ options:
                         Put the system under load during the experiment. You can
                         provide a custom executable to do so. Consider shell escaping.
                         Default is 'stress-ng --cpu 10'.
+  --hidden-files HIDDEN_FILES
+                        Specify the number of hidden files to create.
+                        Default is 1.
+  --visible-files VISIBLE_FILES
+                        Specify the number of visible files to create.
+                        Default is 1.
 ````
 
 This is the heart of the project that performs the experiment.
