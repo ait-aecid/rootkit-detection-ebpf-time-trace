@@ -39,6 +39,7 @@ parser.add_argument("--executable", "-e", default="ls", type=str, help="Provide 
 parser.add_argument("--normal", "-n", action='store_true', help="Run the normal execution, without anomalies.")
 parser.add_argument("--rootkit", "--anormal", "-r", "-a", action='store_true', help="Run the abnormal execution, with rootkit.")
 parser.add_argument("--drop-boundary-events", "-d", action='store_true', help="Drop all events of the first and last PID of each run.\nThese events often miss data.\nMay lead to empty output file if runs <= 2.")
+parser.add_argument('--load', "-l", nargs="?", const="stress-ng --cpu 10", help="Put the system under load during the experiment. You can provide a custom executable to do so. Default is 'stress-ng --cpu 10'. Consider shell escaping.")
 parser.add_argument('description', help="Description of the current experiment, this will be saved in the output's metadata.", nargs=argparse.REMAINDER)
 
 args = parser.parse_args()
@@ -135,7 +136,8 @@ if args.normal:
         print("rootkit was loaded! removing it...")
         remove_rootkit()
 
-    #stress_process = run_background("stress-ng --cpu 10")
+    if args.load:
+        stress_process = run_background(args.load)
 
     finished = False
     detection_thread = threading.Thread(target=run_detection, args=[args.iterations, True])
@@ -150,7 +152,8 @@ if args.normal:
     print(f"polled {poll_count} times!", file=sys.stderr)
 
     detection_thread.join()
-    #stress_process.kill()
+    if args.load:
+        stress_process.kill()
 
     print("done with the \"no rootkit version\"", file=sys.stderr)
 
@@ -184,7 +187,8 @@ if args.rootkit:
     output = []
     finished = False
 
-    #stress_process = run_background("stress-ng --cpu 10")
+    if args.load:
+        stress_process = run_background(args.load)
 
     detection_thread = threading.Thread(target=run_detection, args=[args.iterations, False])
     detection_thread.start()
@@ -200,7 +204,8 @@ if args.rootkit:
     print(f"polled {poll_count} times!", file=sys.stderr)
 
     detection_thread.join()
-    #stress_process.kill()
+    if args.load:
+        stress_process.kill()
 
     print("done with the \"rootkit version\"", file=sys.stderr)
 

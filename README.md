@@ -32,6 +32,10 @@ options:
                         Drop all events of the first and last PID of each run.
                         These events often miss data. May lead to empty output
                         file if runs <= 2.
+  --load, -l [STRESSOR]
+                        Put the system under load during the experiment. You can
+                        provide a custom executable to do so. Consider shell escaping.
+                        Default is 'stress-ng --cpu 10'.
 ````
 
 This is the heart of the project that performs the experiment.
