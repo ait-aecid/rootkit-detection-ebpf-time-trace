@@ -63,7 +63,7 @@ experiment = Experiment(executable=args.executable,
                         linux_version=os.uname().release,
                         description=args.description)
 
-print("compiling eBPF probes...")
+print("compiling eBPF probes...", file=sys.stderr)
 for probe_point in probe_points:
     program_src = open("kernel.c").read()
 
@@ -96,7 +96,7 @@ for probe_point in probe_points:
         #print("got data from " + probe_point + "-return: " + str(event.time), file=sys.stderr)
 
     bpf_return_prog["buffer"].open_ring_buffer(callback)
-print("probes compiled!")
+print("probes compiled!", file=sys.stderr)
 
 def run_detection_once(error_on_hidden: bool) -> None:
     global detection_PIDs
