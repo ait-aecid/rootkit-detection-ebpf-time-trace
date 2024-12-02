@@ -12,6 +12,8 @@ from time import sleep
 from data_classes import Event, Experiment
 from linux import shell, insert_rootkit, remove_rootkit, list_modules, ROOTKIT_NAME, run_background
 
+MAGIC_STRING = "caraxes"
+
 probe_points = [
     #"do_sys_openat2",
     #"x64_sys_call",  # maybe this only works as a retprobe: 'cannot attach kprobe, probe entry may not exist' <- Linux < 6.5
@@ -37,8 +39,12 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--iterations", "-i", default=100, type=int, help="Number of times to run the experiment.")
 parser.add_argument("--executable", "-e", default="ls", type=str, help="Provide an executable for the experiment.")
 parser.add_argument("--normal", "-n", action='store_true', help="Run the normal execution, without anomalies.")
-parser.add_argument("--rootkit", "--anormal", "-r", "-a", action='store_true', help="Run the abnormal execution, with rootkit.")
-parser.add_argument('description', help="Description of the current experiment, this will be saved in the output's metadata.", nargs=argparse.REMAINDER)
+parser.add_argument("--rootkit", "--anomalous", "-r", "-a", action='store_true', help="Run the anomalous execution, with rootkit.")
+parser.add_argument("--drop-boundary-events", "-d", action='store_true', help="Drop all events of the first and last PID of each run.\nThese events often miss data.\nMay lead to empty output file if runs <= 2.")
+parser.add_argument("--load", "-l", nargs="?", const="stress-ng --cpu 10", help="Put the system under load during the experiment. You can provide a custom executable to do so. Default is 'stress-ng --cpu 10'. Consider shell escaping.")
+parser.add_argument("--hidden-files", default=1, type=int, help="Specify the number of hidden files to create.")
+parser.add_argument("--visible-files", default=1, type=int, help="Specify the number of visible files to create.")
+parser.add_argument("description", help="Description of the current experiment, this will be saved in the output's metadata.", nargs=argparse.REMAINDER)
 
 args = parser.parse_args()
 
@@ -49,13 +55,23 @@ if args.normal is False and args.rootkit is False:
 
 # setup directory structure
 DIR_NAME = 'test_dir_' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
-VISIBLE_FILE = "see_me_123"
-HIDDEN_FILE = "hide_me_caraxes_asdf"
+
 shell("mkdir " + DIR_NAME)  # in the CWD is fine
-shell("touch " + DIR_NAME + "/" + HIDDEN_FILE)
-shell("touch " + DIR_NAME + "/" + VISIBLE_FILE)
+
+for i in range(args.visible_files):
+    len = 12
+    name = ''.join(random.choices(string.ascii_uppercase + string.digits, k=len))
+    shell("touch " + DIR_NAME + "/" + name)
+
+for i in range(args.hidden_files):
+    len = 8
+    name = ''.join(random.choices(string.ascii_uppercase + string.digits, k=len))
+    index = int(random.random() * (len+1))
+    name = name[0:index] + "_" + MAGIC_STRING + "_" + name[index:len]
+    shell("touch " + DIR_NAME + "/" + name)
 
 dir_content = shell("ls -a1 " + DIR_NAME).replace("\n", ",")
+
 
 experiment = Experiment(executable=args.executable,
                         iterations=args.iterations,
@@ -63,13 +79,14 @@ experiment = Experiment(executable=args.executable,
                         linux_version=os.uname().release,
                         description=args.description)
 
+print("compiling eBPF probes...", file=sys.stderr)
 for probe_point in probe_points:
     program_src = open("kernel.c").read()
 
     program_enter_src = program_src
     program_enter_src.replace("buffer", "buffer-" + probe_point + "-enter")
     program_enter_src.replace("12345", str(os.getpid()))
-    bpf_enter_prog = BPF(text=program_enter_src)
+    bpf_enter_prog = BPF(text=program_enter_src, cflags=["-Wno-macro-redefined"])
     bpf_enter_prog.attach_kprobe(event=probe_point, fn_name="foo")
     programs[probe_point + "-enter"] = bpf_enter_prog
 
@@ -84,7 +101,7 @@ for probe_point in probe_points:
     program_return_src = program_src
     program_return_src.replace("buffer", "buffer-" + probe_point + "-return")
     program_return_src.replace("12345", str(os.getpid()))
-    bpf_return_prog = BPF(text=program_return_src)
+    bpf_return_prog = BPF(text=program_return_src, cflags=["-Wno-macro-redefined"])
     bpf_return_prog.attach_kretprobe(event=probe_point, fn_name="foo")
     programs[probe_point + "-return"] = bpf_return_prog
 
@@ -95,14 +112,14 @@ for probe_point in probe_points:
         #print("got data from " + probe_point + "-return: " + str(event.time), file=sys.stderr)
 
     bpf_return_prog["buffer"].open_ring_buffer(callback)
-
+print("probes compiled!", file=sys.stderr)
 
 def run_detection_once(error_on_hidden: bool) -> None:
     global detection_PIDs
     process = subprocess.Popen([args.executable, DIR_NAME], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = process.communicate()
     stdout_str = stdout.decode('utf-8')
-    if (HIDDEN_FILE in stdout_str) != error_on_hidden:
+    if (MAGIC_STRING in stdout_str) != error_on_hidden:
         raise Exception("rootkit failed! error_on_hidden: " + str(error_on_hidden) + "; ls result: <" + stdout_str.replace('\n','+') + ">")
     detection_PIDs.append(process.pid)
     print("detection_PID: %i" % process.pid, file=sys.stderr)
@@ -133,7 +150,8 @@ if args.normal:
         print("rootkit was loaded! removing it...")
         remove_rootkit()
 
-    #stress_process = run_background("stress-ng --cpu 10")
+    if args.load:
+        stress_process = run_background(args.load)
 
     finished = False
     detection_thread = threading.Thread(target=run_detection, args=[args.iterations, True])
@@ -148,7 +166,8 @@ if args.normal:
     print(f"polled {poll_count} times!", file=sys.stderr)
 
     detection_thread.join()
-    #stress_process.kill()
+    if args.load:
+        stress_process.kill()
 
     print("done with the \"no rootkit version\"", file=sys.stderr)
 
@@ -182,7 +201,8 @@ if args.rootkit:
     output = []
     finished = False
 
-    #stress_process = run_background("stress-ng --cpu 10")
+    if args.load:
+        stress_process = run_background(args.load)
 
     detection_thread = threading.Thread(target=run_detection, args=[args.iterations, False])
     detection_thread.start()
@@ -198,7 +218,8 @@ if args.rootkit:
     print(f"polled {poll_count} times!", file=sys.stderr)
 
     detection_thread.join()
-    #stress_process.kill()
+    if args.load:
+        stress_process.kill()
 
     print("done with the \"rootkit version\"", file=sys.stderr)
 
@@ -226,7 +247,30 @@ for bpf_prog in programs.values():
 # cleanup testdir structure
 shell("rm -rf " + DIR_NAME)
 
+# delete first and last PID
+if args.drop_boundary_events:
+    # normal
+    lowest_PID = min(normal_events, key=lambda event: event.pid)
+    highest_PID = max(normal_events, key=lambda event: event.pid)
+    lowest_PID = lowest_PID.pid
+    highest_PID = highest_PID.pid
+    print("lowest: " + str(lowest_PID) + "    highest: " + str(highest_PID), file=sys.stderr)
+    normal_events = [event for event in normal_events if event.pid != lowest_PID]
+    normal_events = [event for event in normal_events if event.pid != highest_PID]
+
+    # normal
+    lowest_PID = min(rootkit_events, key=lambda event: event.pid)
+    highest_PID = max(rootkit_events, key=lambda event: event.pid)
+    lowest_PID = lowest_PID.pid
+    highest_PID = highest_PID.pid
+    print("lowest: " + str(lowest_PID) + "    highest: " + str(highest_PID), file=sys.stderr)
+    rootkit_events = [event for event in rootkit_events if event.pid != lowest_PID]
+    rootkit_events = [event for event in rootkit_events if event.pid != highest_PID]
+
 print("Experiment finished, saving output.", file=sys.stderr)
+
+if not os.path.exists("events"):
+    os.makedirs("events")
 
 import json
 

@@ -6,12 +6,12 @@
 
 ## Structure
 
-### `detection.py`
+### `probing.py`
 
 ````commandline
-usage: detection.py [-h] [--iterations ITERATIONS] [--executable EXECUTABLE]
-                    [--normal] [--rootkit]
-                    DESCRIPTION
+probing.py [-h] [--iterations ITERATIONS] [--executable EXECUTABLE]
+                  [--normal] [--rootkit] [--drop-boundary-events]
+                  DESCRIPTION
 
 positional arguments:
   DESCRIPTION           Description of the current experiment, this will be
@@ -24,10 +24,24 @@ options:
                         Default is 100x.
   --executable EXECUTABLE, -e EXECUTABLE
                         Provide an executable for the experiment.
-                        Default is `ls`.
+                        Default is 'ls'.
   --normal, -n          Run the normal execution, without anomalies.
-  --rootkit, --anormal, -r, -a
-                        Run the anormal execution, with rootkit.
+  --rootkit, --anomalous, -r, -a
+                        Run the anomalous execution, with rootkit.
+  --drop-boundary-events, -d
+                        Drop all events of the first and last PID of each run.
+                        These events often miss data. May lead to empty output
+                        file if runs <= 2.
+  --load, -l [STRESSOR]
+                        Put the system under load during the experiment. You can
+                        provide a custom executable to do so. Consider shell escaping.
+                        Default is 'stress-ng --cpu 10'.
+  --hidden-files HIDDEN_FILES
+                        Specify the number of hidden files to create.
+                        Default is 1.
+  --visible-files VISIBLE_FILES
+                        Specify the number of visible files to create.
+                        Default is 1.
 ````
 
 This is the heart of the project that performs the experiment.
@@ -59,7 +73,7 @@ since insertion of eBPF probes and loading of the rootkit requires so.
 
 ### `run.py`
 
-Call this with a data file (obtained via `user.py` / `experiment.sh`) and comment in the desired processing method.
+Call this with a data file (obtained via `probing.py` / `experiment.sh`) and comment in the desired processing method.
 
 ### `process_data.py:Plot`
 

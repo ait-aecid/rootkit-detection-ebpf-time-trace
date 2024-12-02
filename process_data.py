@@ -70,7 +70,7 @@ class Plot:
             else:
                 self.events_rootkit = experiment.events
 
-        self.file_date = filename_a.replace("events/", "").replace("experiment", "").replace(".json", "").replace(".gz", "")
+        self.file_date = filename_a.replace("events/", "").replace("events_", "").replace(".json", "").replace(".gz", "")
 
         for event in self.events:
             try:
