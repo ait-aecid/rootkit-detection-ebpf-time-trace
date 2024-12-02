@@ -37,19 +37,15 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--iterations", "-i", default=100, type=int, help="Number of times to run the experiment.")
 parser.add_argument("--executable", "-e", default="ls", type=str, help="Provide an executable for the experiment.")
 parser.add_argument("--normal", "-n", action='store_true', help="Run the normal execution, without anomalies.")
-parser.add_argument("--rootkit", "--anormal", "-r", "-a", action='store_true', help="Run the anormal execution, with rootkit.")
+parser.add_argument("--rootkit", "--anormal", "-r", "-a", action='store_true', help="Run the abnormal execution, with rootkit.")
 parser.add_argument('description', help="Description of the current experiment, this will be saved in the output's metadata.", nargs=argparse.REMAINDER)
 
 args = parser.parse_args()
 
 if args.normal is False and args.rootkit is False:
-    msg = """
-    You have to select the types of executions to do.
-    At leas one of --normal and --rootkit.
-    """
-    print(msg, file=sys.stderr)
-    parser.print_help()
-    exit(1)
+    # By default, run experiment with and without rootkit
+    args.normal = True
+    args.rootkit = True
 
 # setup directory structure
 DIR_NAME = 'test_dir_' + ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
@@ -130,6 +126,7 @@ print(f"Running experiment with {experiment.executable} for {experiment.iteratio
 
 experiment.experiment_begin = datetime.now().isoformat()
 
+normal_events = []
 if args.normal:
     # make sure the rootkit is not loaded
     if ROOTKIT_NAME in list_modules():
@@ -165,12 +162,13 @@ if args.normal:
         event.timestamp -= first
 
     # save events without rootkit
-    experiment.events = output
+    normal_events = output
 
 
 
 # --------------------------
 
+rootkit_events = []
 if args.rootkit:
     # let's do the same thing again but with rootkit
 
@@ -214,7 +212,7 @@ if args.rootkit:
         event.timestamp -= first
 
     # save events with rootkit
-    experiment.events_rootkit = output
+    rootkit_events = output
 
     # we are done
     remove_rootkit()
@@ -232,9 +230,17 @@ print("Experiment finished, saving output.", file=sys.stderr)
 
 import json
 
-filename = "experiment" + datetime.now().isoformat() + ".json.gz"
+filename = "events/events_" + datetime.now().isoformat() + ".json.gz"
+experiment.events = normal_events
+experiment.label = "normal"
 with gzip.open(filename, 'w', compresslevel=1) as file:
     file.write(json.dumps(experiment, default=vars).encode())
+
+filename = "events/events_" + datetime.now().isoformat() + ".json.gz"
+experiment.events = rootkit_events
+experiment.label = "rootkit"
+with gzip.open(filename, 'w', compresslevel=1) as file:
+        file.write(json.dumps(experiment, default=vars).encode())
 
 print(f"Saved data to %s" % filename)
 
