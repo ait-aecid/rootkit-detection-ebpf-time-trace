@@ -63,13 +63,14 @@ experiment = Experiment(executable=args.executable,
                         linux_version=os.uname().release,
                         description=args.description)
 
+print("compiling eBPF probes...")
 for probe_point in probe_points:
     program_src = open("kernel.c").read()
 
     program_enter_src = program_src
     program_enter_src.replace("buffer", "buffer-" + probe_point + "-enter")
     program_enter_src.replace("12345", str(os.getpid()))
-    bpf_enter_prog = BPF(text=program_enter_src)
+    bpf_enter_prog = BPF(text=program_enter_src, cflags=["-Wno-macro-redefined"])
     bpf_enter_prog.attach_kprobe(event=probe_point, fn_name="foo")
     programs[probe_point + "-enter"] = bpf_enter_prog
 
@@ -84,7 +85,7 @@ for probe_point in probe_points:
     program_return_src = program_src
     program_return_src.replace("buffer", "buffer-" + probe_point + "-return")
     program_return_src.replace("12345", str(os.getpid()))
-    bpf_return_prog = BPF(text=program_return_src)
+    bpf_return_prog = BPF(text=program_return_src, cflags=["-Wno-macro-redefined"])
     bpf_return_prog.attach_kretprobe(event=probe_point, fn_name="foo")
     programs[probe_point + "-return"] = bpf_return_prog
 
@@ -95,7 +96,7 @@ for probe_point in probe_points:
         #print("got data from " + probe_point + "-return: " + str(event.time), file=sys.stderr)
 
     bpf_return_prog["buffer"].open_ring_buffer(callback)
-
+print("probes compiled!")
 
 def run_detection_once(error_on_hidden: bool) -> None:
     global detection_PIDs
