@@ -38,6 +38,7 @@ parser.add_argument("--iterations", "-i", default=100, type=int, help="Number of
 parser.add_argument("--executable", "-e", default="ls", type=str, help="Provide an executable for the experiment.")
 parser.add_argument("--normal", "-n", action='store_true', help="Run the normal execution, without anomalies.")
 parser.add_argument("--rootkit", "--anormal", "-r", "-a", action='store_true', help="Run the abnormal execution, with rootkit.")
+parser.add_argument("--drop-boundary-events", "-d", action='store_true', help="Drop all events of the first and last PID of each run.\nThese events often miss data.\nMay lead to empty output file if runs <= 2.")
 parser.add_argument('description', help="Description of the current experiment, this will be saved in the output's metadata.", nargs=argparse.REMAINDER)
 
 args = parser.parse_args()
@@ -226,6 +227,26 @@ for bpf_prog in programs.values():
 
 # cleanup testdir structure
 shell("rm -rf " + DIR_NAME)
+
+# delete first and last PID
+if args.drop_boundary_events:
+    # normal
+    lowest_PID = min(normal_events, key=lambda event: event.pid)
+    highest_PID = max(normal_events, key=lambda event: event.pid)
+    lowest_PID = lowest_PID.pid
+    highest_PID = highest_PID.pid
+    print("lowest: " + str(lowest_PID) + "    highest: " + str(highest_PID), file=sys.stderr)
+    normal_events = [event for event in normal_events if event.pid != lowest_PID]
+    normal_events = [event for event in normal_events if event.pid != highest_PID]
+
+    # normal
+    lowest_PID = min(rootkit_events, key=lambda event: event.pid)
+    highest_PID = max(rootkit_events, key=lambda event: event.pid)
+    lowest_PID = lowest_PID.pid
+    highest_PID = highest_PID.pid
+    print("lowest: " + str(lowest_PID) + "    highest: " + str(highest_PID), file=sys.stderr)
+    rootkit_events = [event for event in rootkit_events if event.pid != lowest_PID]
+    rootkit_events = [event for event in rootkit_events if event.pid != highest_PID]
 
 print("Experiment finished, saving output.", file=sys.stderr)
 

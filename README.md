@@ -9,9 +9,9 @@
 ### `probing.py`
 
 ````commandline
-usage: probing.py [-h] [--iterations ITERATIONS] [--executable EXECUTABLE]
-                    [--normal] [--rootkit]
-                    DESCRIPTION
+probing.py [-h] [--iterations ITERATIONS] [--executable EXECUTABLE]
+                  [--normal] [--rootkit] [--drop-boundary-events]
+                  DESCRIPTION
 
 positional arguments:
   DESCRIPTION           Description of the current experiment, this will be
@@ -24,10 +24,14 @@ options:
                         Default is 100x.
   --executable EXECUTABLE, -e EXECUTABLE
                         Provide an executable for the experiment.
-                        Default is `ls`.
+                        Default is 'ls'.
   --normal, -n          Run the normal execution, without anomalies.
   --rootkit, --anormal, -r, -a
-                        Run the anormal execution, with rootkit.
+                        Run the abnormal execution, with rootkit.
+  --drop-boundary-events, -d
+                        Drop all events of the first and last PID of each run.
+                        These events often miss data. May lead to empty output
+                        file if runs <= 2.
 ````
 
 This is the heart of the project that performs the experiment.
