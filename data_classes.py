@@ -46,11 +46,15 @@ class Interval:
 
 
 class Experiment:
-    def __init__(self, executable: str, iterations: int, dir_content: str, linux_version: str, description: str, label: str = "", experiment_begin: str = None, experiment_end: str = None, events: [Event] = []):
+    def __init__(self, executable: str, iterations: int, dir_content: str, linux_version: str, drop_boundary_events: bool, load: str, hidden_files: int, visible_files: int, description: str, label: str = "", experiment_begin: str = None, experiment_end: str = None, events: [Event] = []):
         self.executable: str = executable
         self.iterations: int = iterations
         self.dir_content: str = dir_content
         self.linux_version: str = linux_version
+        self.drop_boundary_events: bool = drop_boundary_events
+        self.load: str = load
+        self.hidden_files: int = hidden_files
+        self.visible_files: int = visible_files
         self.description: str = description
         self.label: str = label
         self.experiment_begin: str = experiment_begin
@@ -66,6 +70,10 @@ def experiment_from_json(input: dict) -> Experiment:
                       iterations=int(input["iterations"]),
                       dir_content=input["dir_content"],
                       linux_version=input["linux_version"],
+                      drop_boundary_events=bool(input["drop_boundary_events"]),
+                      load=input["load"],
+                      hidden_files=input["hidden_files"],
+                      visible_files=input["visible_files"],
                       description=input["description"],
                       label=input["label"],
                       experiment_begin=input["experiment_begin"],

@@ -41,10 +41,10 @@ parser.add_argument("--executable", "-e", default="ls", type=str, help="Provide 
 parser.add_argument("--normal", "-n", action='store_true', help="Run the normal execution, without anomalies.")
 parser.add_argument("--rootkit", "--anomalous", "-r", "-a", action='store_true', help="Run the anomalous execution, with rootkit.")
 parser.add_argument("--drop-boundary-events", "-d", action='store_true', help="Drop all events of the first and last PID of each run.\nThese events often miss data.\nMay lead to empty output file if runs <= 2.")
-parser.add_argument("--load", "-l", nargs="?", const="stress-ng --cpu 10", help="Put the system under load during the experiment. You can provide a custom executable to do so. Default is 'stress-ng --cpu 10'. Consider shell escaping.")
+parser.add_argument("--load", "-l", default="", nargs="?", const="stress-ng --cpu 10", help="Put the system under load during the experiment. You can provide a custom executable to do so. Default is 'stress-ng --cpu 10'. Consider shell escaping.")
 parser.add_argument("--hidden-files", default=1, type=int, help="Specify the number of hidden files to create.")
 parser.add_argument("--visible-files", default=1, type=int, help="Specify the number of visible files to create.")
-parser.add_argument("description", help="Description of the current experiment, this will be saved in the output's metadata.", nargs=argparse.REMAINDER)
+parser.add_argument("--description", default="", type=str, help="Description of the current experiment, this will be saved in the output's metadata.")
 
 args = parser.parse_args()
 
@@ -77,6 +77,10 @@ experiment = Experiment(executable=args.executable,
                         iterations=args.iterations,
                         dir_content=dir_content,
                         linux_version=os.uname().release,
+                        drop_boundary_events=args.drop_boundary_events,
+                        load=args.load,
+                        hidden_files=args.hidden_files,
+                        visible_files=args.visible_files,
                         description=args.description)
 
 print("compiling eBPF probes...", file=sys.stderr)
@@ -274,17 +278,19 @@ if not os.path.exists("events"):
 
 import json
 
-filename = "events/events_" + datetime.now().isoformat() + ".json.gz"
-experiment.events = normal_events
-experiment.label = "normal"
-with gzip.open(filename, 'w', compresslevel=1) as file:
-    file.write(json.dumps(experiment, default=vars).encode())
-
-filename = "events/events_" + datetime.now().isoformat() + ".json.gz"
-experiment.events = rootkit_events
-experiment.label = "rootkit"
-with gzip.open(filename, 'w', compresslevel=1) as file:
+if args.normal:
+    filename = "events/events_" + datetime.now().isoformat() + "_normal.json.gz"
+    experiment.events = normal_events
+    experiment.label = "normal"
+    with gzip.open(filename, 'w', compresslevel=1) as file:
         file.write(json.dumps(experiment, default=vars).encode())
+
+if args.rootkit:
+    filename = "events/events_" + datetime.now().isoformat() + "_rootkit.json.gz"
+    experiment.events = rootkit_events
+    experiment.label = "rootkit"
+    with gzip.open(filename, 'w', compresslevel=1) as file:
+            file.write(json.dumps(experiment, default=vars).encode())
 
 print(f"Saved data to %s" % filename)
 
