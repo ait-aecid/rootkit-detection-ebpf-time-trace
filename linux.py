@@ -34,12 +34,13 @@ def remove_rootkit() -> None:
         raise Exception(result.stderr)
 
 
-def shell(cmd: str) -> str:
+def shell(cmd: str, mute=False) -> str:
     command = subprocess.Popen(cmd.split(" "), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = command.communicate()
     exitcode = command.wait()
     stdout_str = stdout.decode('utf-8')
-    print(stdout_str, file=sys.stderr, end='')
+    if not mute:
+        print(stdout_str, file=sys.stderr, end='')
     if exitcode != 0:
         raise Exception(stderr.decode('utf-8'))
     return stdout_str

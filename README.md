@@ -42,6 +42,10 @@ options:
   --visible-files VISIBLE_FILES
                         Specify the number of visible files to create.
                         Default is 1.
+  --file-name-length NAME_LENGTH
+                        Specify the general length of names of files that will be created.
+                        Too short will behave bad. MAGIC_WORD for hidden file gets added.
+                        Default is 8.
 ````
 
 This is the heart of the project that performs the experiment.

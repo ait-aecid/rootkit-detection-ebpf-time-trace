@@ -44,6 +44,7 @@ parser.add_argument("--drop-boundary-events", "-d", action='store_true', help="D
 parser.add_argument("--load", "-l", default="", nargs="?", const="stress-ng --cpu 10", help="Put the system under load during the experiment. You can provide a custom executable to do so. Default is 'stress-ng --cpu 10'. Consider shell escaping.")
 parser.add_argument("--hidden-files", default=1, type=int, help="Specify the number of hidden files to create.")
 parser.add_argument("--visible-files", default=1, type=int, help="Specify the number of visible files to create.")
+parser.add_argument("--file-name-length", default=8, type=int, help="Specify the general length of names of files that will be created. Too short will behave bad. MAGIC_WORD for hidden file gets added.")
 parser.add_argument("--description", default="", type=str, help="Description of the current experiment, this will be saved in the output's metadata.")
 
 args = parser.parse_args()
@@ -59,18 +60,16 @@ DIR_NAME = 'test_dir_' + ''.join(random.choices(string.ascii_uppercase + string.
 shell("mkdir " + DIR_NAME)  # in the CWD is fine
 
 for i in range(args.visible_files):
-    len = 12
-    name = ''.join(random.choices(string.ascii_uppercase + string.digits, k=len))
+    name = ''.join(random.choices(string.ascii_uppercase + string.digits, k=args.file_name_length))
     shell("touch " + DIR_NAME + "/" + name)
 
 for i in range(args.hidden_files):
-    len = 8
-    name = ''.join(random.choices(string.ascii_uppercase + string.digits, k=len))
-    index = int(random.random() * (len+1))
-    name = name[0:index] + "_" + MAGIC_STRING + "_" + name[index:len]
+    name = ''.join(random.choices(string.ascii_uppercase + string.digits, k=args.file_name_length))
+    index = int(random.random() * (args.file_name_length+1))
+    name = name[0:index] + "_" + MAGIC_STRING + "_" + name[index:args.file_name_length]
     shell("touch " + DIR_NAME + "/" + name)
 
-dir_content = shell("ls -a1 " + DIR_NAME).replace("\n", ",")
+dir_content = shell("ls -a1 " + DIR_NAME, mute=True).replace("\n", ",")
 
 
 experiment = Experiment(executable=args.executable,
