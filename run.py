@@ -1,16 +1,20 @@
 import sys
+import os
+import re
 from process_data import Plot
+
+DIR_NAME = "events/"
 
 try:
     filename_a = sys.argv[1]
     filename_b = sys.argv[2]
 except IndexError:
     # get the most recent experiment file...
-    files = [f for f in os.listdir('.') if os.path.isfile(os.path.join('.', f))]
-    outputs = [file for file in files if re.match(r'^experiment.*\.json.gz$', file)]
+    files = [f for f in os.listdir(DIR_NAME)]
+    outputs = [file for file in files if re.match(r'^events_.*\.json.gz$', file)]
     outputs.sort()
-    filename_a = outputs.pop()
-    filename_b = outputs.pop()
+    filename_a = os.path.join(DIR_NAME, outputs.pop())
+    filename_b = os.path.join(DIR_NAME, outputs.pop())
 
 plot = Plot(filename_a, filename_b)
 

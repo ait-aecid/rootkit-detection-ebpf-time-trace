@@ -83,6 +83,11 @@ class Intervals:
                 self.event_count[event.probe_point] = 0
             self.event_count[event.probe_point] += 1
 
+        # To decrease memory usage of each object, remove events since they are not needed for anomaly detection
+        # Comment out the following two lines to analyze event data rather than interval data
+        self.events = []
+        self.experiment.events = []
+
     def __fill_events_per_process(self):
         if self.events_per_process:
             # was already filled
