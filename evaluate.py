@@ -21,6 +21,11 @@ from data_classes import Event, Interval, experiment_from_json
 from scipy.stats import ttest_ind
 from scipy.stats import wasserstein_distance_nd
 from scipy.stats import norm
+from scipy.stats import chi2
+from tqdm import tqdm
+
+normal_key = "normal"
+rootkit_key = "rootkit"
 
 class Intervals:
     def __init__(self, filename):
@@ -117,13 +122,33 @@ class Intervals:
     def export_intervals_to_csv(self, out):
         for name, interv in self.intervals.items():
             for cnt, i in enumerate(interv):
-                out.write(str(self.filename) + ',' + str(name) + ',' + str(cnt) + ',' + str(i.time) + ',' + str(i.pid) + ',' + str(i.tgid) + ',' + str(self.experiment.label) + '\n')
+                out.write(str(self.filename) + ',' + str(name) + ',' + str(cnt) + ',' + str(i.time) + ',' + str(i.pid) + ',' + str(i.tgid) + ',' + str(self.experiment.label) + ',' + str(self.experiment.description) + '\n')
+
+    def export_event_counts(self, out):
+        counts = {}
+        for event in self.experiment.events:
+            if event.probe_point not in counts:
+                counts[event.probe_point] = 1
+            else:
+                counts[event.probe_point] += 1
+        for probe_point_name, cnt in counts.items():
+            out.write(str(self.filename) + ',' + str(probe_point_name) + ',' + str(cnt) + ',' + str(self.experiment.label) + '\n')
 
 def export_all_intervals_to_csv(ivs):
     with open('intervals.csv', 'w+') as out:
-        out.write('filename,name,id,delta,pid,tgit,label\n')
-        for iv in ivs:
-            iv.export_intervals_to_csv(out)
+        out.write('filename,name,id,delta,pid,tgit,label,description\n')
+        for label, ivs_dict in ivs.items():
+            for description, iv_list in ivs_dict.items():
+                for iv in iv_list:
+                    iv.export_intervals_to_csv(out)
+
+def export_all_event_counts(ivs):
+    with open('event_counts.csv', 'w+') as out:
+        out.write('filename,event,count,label\n')
+        for label, ivs_dict in ivs.items():
+            for description, iv_list in ivs_dict.items():
+                for iv in iv_list:
+                    iv.export_event_counts(out)
 
 #def shift_detection(train_quantiles_dict, test, quantiles):
 #    for name in set(train_quantiles_dict.keys()).intersection(set(test.keys())):
@@ -187,6 +212,14 @@ def print_results(name, tp, fn, tn, fp, threshold, det_time):
     print(' MCC=' + str(mcc))
     return {'tp': tp, 'fp': fp, 'tn': tn, 'fn': fn, 'tpr': tpr, 'fpr': fpr, 'tnr': tnr, 'p': p, 'f1': fone, 'acc': acc, 'threshold': threshold, 'name': name, 'time': det_time}
 
+def print_confusion(name, tp_c, fn_c, tn_c, fp_c):
+    print(name)
+    print("Predicted")
+    print("Pos\tNeg")
+    for description in tp_c:
+        print(str(tp_c[description]) + "\t" + str(fn_c[description]) + "\tPos - Actual " + description)
+        print(str(fp_c[description]) + "\t" + str(tn_c[description]) + "\tNeg - Actual " + description)
+
 def get_diffs(batches_a, batches_b, quantiles):
     diffs = {}
     for batch_a in batches_a:
@@ -208,7 +241,7 @@ def get_diffs(batches_a, batches_b, quantiles):
                     diffs[name][q].append(diff[i])
     return diffs
 
-def get_quantile_vals(batches, quantiles):
+def get_quantile_vals_old(batches, quantiles):
     vals = {}
     for batch in batches:
         for name, interv_list in batch.intervals_time.items():
@@ -221,7 +254,25 @@ def get_quantile_vals(batches, quantiles):
                 vals[name][q].append(interv_list_quantiles[i])
     return vals
 
-def get_crits(vals_a, vals_b, quantiles):
+def get_quantile_vals(batches, quantiles):
+    vals = {}
+    num_obs = {}
+    for batch in batches:
+        for name, interv_list in batch.intervals_time.items():
+            if name not in vals:
+                vals[name] = [np.quantile(interv_list, quantiles)]
+                num_obs[name] = len(interv_list)
+            else:
+                vals[name].append(np.quantile(interv_list, quantiles))
+                num_obs[name] += len(interv_list)
+                #for q in quantiles:
+                #    vals[name][q] = []
+            #interv_list_quantiles = np.quantile(interv_list, quantiles)
+            #for i, q in enumerate(quantiles):
+            #    vals[name][q].append(interv_list_quantiles[i])
+    return vals, num_obs
+
+def get_crits_old(vals_a, vals_b, quantiles):
     crits = {}
     anom = False
     for name in set(vals_a.keys()).intersection(set(vals_b.keys())):
@@ -236,17 +287,106 @@ def get_crits(vals_a, vals_b, quantiles):
             # cdf has mean at 0.5 and min/max at 0/1; compute score that is 1 at the mean and approaches 0 at the tails
             crit = 1 - 2 * np.abs(norm.cdf(vals_b[name][q], loc=np.mean(vals_a[name][q]), scale=np.std(vals_a[name][q])) - 0.5)
             crits[name][q] = crit
-            #if crit <= 1: #0.001: #1e-20:
-            ##    anom = True
-            #    print(name, q, crit)
-            #    print(" " + str(vals_a[name][q]))
-            #    print(" " + str(vals_b[name][q]))
+            if crit <= 0.001: #1e-20:
+            #    anom = True
+                print(name, q, crit)
+                print(" " + str(vals_a[name][q]))
+                print(" " + str(vals_b[name][q]))
     return crits #, anom
 
-def run_test(train, test_norm, test_anom, quantiles):
+#def get_crits(train_mean, train_var, train_cov, train_cov_inv, train_num_obs, test_vals, test_num_obs, quantiiles):
+def get_crits(train_mean, train_var, train_num_obs, test_vals, test_num_obs, quantiiles):
+    crits = {}
+    for name in train_mean:
+        if name not in test_vals:
+            continue
+        if train_num_obs[name] < len(quantiles):
+            continue
+        if test_num_obs[name] < len(quantiles):
+            continue
+        crits[name] = {}
+        ##diff = test_vals[name] - train_mean[name]
+        #print(test_vals[name])
+        #print("x")
+        #print(train_mean[name])
+        #print("y")
+        #print(diff)
+        #asdf()
+        #train_cov_inv = np.linalg.inv(train_cov[name])
+        #print("")
+        #print(name)
+        #print(diff.T)
+        #print(train_cov_inv[name])
+        #print(diff)
+        #print(train_cov_inv[name].shape)
+        ##mhd = diff @ train_cov_inv[name] @ diff.T
+
+        test_vals_scaled = (test_vals[name] - train_mean[name]) / np.sqrt(train_var[name])
+        mhd = np.sum(test_vals_scaled**2)
+        # Compute the p-value
+        p_value = 1 - chi2.cdf(mhd, df=len(quantiles))
+        #if p_value < 1e-20:
+        #    print(name, p_value, train_num_obs[name], test_num_obs[name], train_mean[name], np.sqrt(train_var[name]), test_vals[name])
+        print(name, p_value, train_num_obs[name], test_num_obs[name])
+        #print(name, train_cov_inv[name].shape[0], np.linalg.cond(train_cov[name]), np.linalg.eigvals(train_cov[name]), mhd, p_value)
+        #print(name, len(quantiles), train_cov_inv[name].shape[0], np.linalg.cond(train_cov[name]), train_num_obs[name], test_num_obs[name], mhd, p_value)
+        crits[name] = p_value
+        #for q in quantiles:
+        #    #if len(vals_a[name][q]) < 10 or len(vals_b[name][q]) < 10:
+        #    #    continue
+        #    #t_stat, p_val = ttest_ind(vals_a[name][q], vals_b[name][q])
+        #    #print(len(vals_b[name][q]), len(vals_a[name][q]))
+        #    if len(vals_a[name][q]) < 5:
+        #        continue
+        #    # cdf has mean at 0.5 and min/max at 0/1; compute score that is 1 at the mean and approaches 0 at the tails
+        #    crit = 1 - 2 * np.abs(norm.cdf(vals_b[name][q], loc=np.mean(vals_a[name][q]), scale=np.std(vals_a[name][q])) - 0.5)
+        #    crits[name][q] = crit
+        #    if crit <= 0.001: #1e-20:
+        #    #    anom = True
+        #        print(name, q, crit)
+        #        print(" " + str(vals_a[name][q]))
+        #        print(" " + str(vals_b[name][q]))
+    return crits #, anom
+
+def get_stats(data, num_batches):
+    mean = {}
+    var = {}
+    cov = {}
+    cov_inv = {}
+    for name, vals in data.items():
+        #print(name, len(vals))
+        if len(vals) < num_batches / 2:
+            # Name only appears in some of the batches; likely a result of incorrectly collected intervals 
+            continue
+        #print(name)
+        #print(vals)
+        #print(np.array(vals).shape, len(vals))
+        mean[name] = np.mean(vals, axis=0)
+        var[name] = np.var(vals, axis=0, ddof=0)
+        #print(mean[name])
+        #zero_mean_data = vals - mean[name]
+        #print(zero_mean_data)
+        #cov[name] = np.cov(zero_mean_data, rowvar=False)
+        #if True:
+        #    cov[name] = cov[name] + 1e-6 * np.eye(cov[name].shape[0])
+        #print(cov)
+        #asdf()
+        #print(cov[name])
+        #cov_inv[name] = np.linalg.inv(cov[name])
+    return mean, var #, cov, cov_inv
+
+def run_test(train, test, quantiles):
     # Generate model by computing shifts between pairs of batches
     #train_diffs = get_diffs(train, train, quantiles)
-    train_vals = get_quantile_vals(train, quantiles)
+    train_num_obs = {}
+    train_mean = {}
+    train_var = {}
+    for description, train_batches in train.items():
+        #print(description)
+        train_vals, train_num_obs[description] = get_quantile_vals(train_batches, quantiles)
+        #train_mean, train_var, train_cov, train_cov_inv = get_stats(train_vals)
+        train_mean[description], train_var[description] = get_stats(train_vals, len(train_batches))
+    #asdf()
     #for train_batch in train:
     #    for name, interv_list in train_batch.intervals_time.items():
     #        interv_list_quantiles = np.quantile(interv_list, quantiles)
@@ -297,48 +437,103 @@ def run_test(train, test_norm, test_anom, quantiles):
     #for test_anom_batch in test_anom:
     #    x = shift_detection(train_quantiles, test_anom_batch.intervals_time, quantiles)
     #    print(test_anom_batch.experiment.label + ': ' + str(np.median(x)) + ", " + str(np.std(x)))
-    crits_norm, crits_anom = [], []
-    for test_norm_batch in test_norm:
-        test_norm_vals = get_quantile_vals([test_norm_batch], quantiles)
-        crits_norm.append(get_crits(train_vals, test_norm_vals, quantiles))
-        #exit()
-    #print(crits_norm)
-    for test_anom_batch in test_anom:
-        test_anom_vals = get_quantile_vals([test_anom_batch], quantiles)
-        crits_anom.append(get_crits(train_vals, test_anom_vals, quantiles))
+    crits = {}
+    descriptions = set()
+    i = 0
+    for label in test: #["normal"]: #test:
+        for description, test_batches in test[label].items():
+            #test_norm_vals, test_norm_num_obs = get_quantile_vals([test_norm_batch], quantiles)
+            if label not in crits:
+                crits[label] = {}
+            if description not in crits[label]:
+                crits[label][description] = []
+            descriptions.add(description)
+            for test_batch in test_batches:
+                print(i)
+                i += 1
+                test_vals, test_num_obs = get_quantile_vals([test_batch], quantiles)
+                #crits[label][description].append(get_crits(train_mean, train_var, train_cov, train_cov_inv, train_num_obs, test_vals, test_num_obs, quantiles))
+                crits[label][description].append(get_crits(train_mean[description], train_var[description], train_num_obs[description], test_vals, test_num_obs, quantiles))
+    #crits_norm, crits_anom = [], []
+    #for test_norm_batch in test_norm:
+    #    test_norm_vals, test_norm_num_obs = get_quantile_vals([test_norm_batch], quantiles)
+    #    crits_norm.append(get_crits(train_mean, train_var, train_cov, train_cov_inv, train_num_obs, test_norm_vals, test_norm_num_obs, quantiles))
+    #    #print("")
+    #    #exit()
+    ##print("\nANOM\n")
+    ##print(crits_norm)
+    #for test_anom_batch in test_anom:
+    #    test_anom_vals, test_anom_num_obs = get_quantile_vals([test_anom_batch], quantiles)
+    #    crits_anom.append(get_crits(train_mean, train_var, train_cov, train_cov_inv, train_num_obs, test_anom_vals, test_anom_num_obs, quantiles))
+    #    #print("")
+    #    #asdf()
+    #sub_classes = set()
+    #for batch in train + test_norm + test_anom:
+    #    sub_classes.add(batch.experiment.description)
     best_metrics = {"fone": None, "tp": None, "fp": None, "tn": None, "fn": None, "time": None, "thresh": None}
-    for thresh in np.logspace(-30, 0, num=100):
+    for thresh in np.logspace(-100, 0, num=100):
         start_time = time.time()
-        tp, fp, tn, fn = 0, 0, 0, 0
-        for batch_crits in crits_norm:
-            anom = False
-            for name, quantile_dict in batch_crits.items():
-                for q, crit in quantile_dict.items():
-                    if crit < thresh:
-                        #print(crit)
-                        anom = True
-                        break
-                if anom:
-                    break
-            if anom:
-                fp += 1
-            else:
-                tn += 1
-        for batch_crits in crits_anom:
-            anom = False
-            for name, quantile_dict in batch_crits.items():
-                for q, crit in quantile_dict.items():
-                    if crit < thresh:
-                        #print(crit)
-                        anom = True
-                        break
-                if anom:
-                    break
-            if anom:
-                tp += 1
-            else:
-                fn += 1
+        tp, fp, tn, fn = 0, 0, 0, 0 # Counts differentiate only normal and anomalous classes, independent from sub-classes
+        tp_c, fp_c, tn_c, fn_c = {}, {}, {}, {} # Use sub-classes for the confusion matrix
+        for description in descriptions:
+            tp_c[description] = 0
+            fp_c[description] = 0
+            tn_c[description] = 0
+            fn_c[description] = 0
+        for label in crits:
+            for description, crit_list in crits[label].items():
+                for crit_dict in crit_list:
+                    anomaly_detected = False
+                    for name, crit in crit_dict.items():
+                        if crit < thresh:
+                            anomaly_detected = True
+                            break
+                    if anomaly_detected:
+                        # Detected as anomaly
+                        if label == rootkit_key:
+                            tp += 1
+                            tp_c[description] += 1
+                        else:
+                            fp += 1
+                            fp_c[description] += 1
+                    else:
+                        # Detected as normal
+                        if label == rootkit_key:
+                            fn += 1
+                            fn_c[description] += 1
+                        else:
+                            tn += 1
+                            tn_c[description] += 1
+        #for batch_crits in crits_norm:
+        #    anom = False
+        #    for name, quantile_dict in batch_crits.items():
+        #        for q, crit in quantile_dict.items():
+        #            if crit < thresh:
+        #                #print(crit)
+        #                anom = True
+        #                break
+        #        if anom:
+        #            break
+        #    if anom:
+        #        fp += 1
+        #    else:
+        #        tn += 1
+        #for batch_crits in crits_anom:
+        #    anom = False
+        #    for name, quantile_dict in batch_crits.items():
+        #        for q, crit in quantile_dict.items():
+        #            if crit < thresh:
+        #                #print(crit)
+        #                anom = True
+        #                break
+        #        if anom:
+        #            break
+        #    if anom:
+        #        tp += 1
+        #    else:
+        #        fn += 1
         fone = get_fone(tp, fn, tn, fp)
+        #print(thresh, tp, fn, tn, fp, fone)
         #print(thresh, fone)
         total_time = time.time() - start_time
         if best_metrics["fone"] is None or fone >= best_metrics["fone"]:
@@ -349,7 +544,12 @@ def run_test(train, test_norm, test_anom, quantiles):
             best_metrics["fn"] = fn
             best_metrics["time"] = total_time
             best_metrics["thresh"] = thresh
+            best_metrics["tp_c"] = tp_c
+            best_metrics["fn_c"] = fn_c
+            best_metrics["tn_c"] = tn_c
+            best_metrics["fp_c"] = fp_c
     print_results("test", best_metrics["tp"], best_metrics["fn"], best_metrics["tn"], best_metrics["fp"], best_metrics["thresh"], best_metrics["time"])
+    print_confusion("test", best_metrics["tp_c"], best_metrics["fn_c"], best_metrics["tn_c"], best_metrics["fp_c"])
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--directory", "-d", default="events", type=str, help="Directory containing event data.")
@@ -365,39 +565,82 @@ if not os.path.isdir(args.directory):
     print("Error: " + args.directory + " is not a valid directory.")
     exit()
 
-ivs = []
+ivs = {normal_key: {}, rootkit_key: {}}
 # Iterate through each file in the directory
-for filename in os.listdir(args.directory):
+files = os.listdir(args.directory)
+#random.shuffle(files)
+files.sort()
+#files = files[:210] # TODO remove
+for filename in tqdm(files):
     filepath = os.path.join(args.directory, filename)
     
     # Check if it's a file (not a directory or symbolic link)
     if os.path.isfile(filepath):
         iv = Intervals(filepath)
-        print(iv.experiment.label)
+        #print(iv.experiment.label)
         #iv.sanity_check()
-        ivs.append(iv)
+        #ivs.append(iv)
+        if iv.experiment.label == normal_key:
+            if iv.experiment.description not in ivs[normal_key]:
+                ivs[normal_key][iv.experiment.description] = []
+            ivs[normal_key][iv.experiment.description].append(iv)
+        elif iv.experiment.label == rootkit_key:
+            if iv.experiment.description not in ivs[rootkit_key]:
+                ivs[rootkit_key][iv.experiment.description] = []
+            ivs[rootkit_key][iv.experiment.description].append(iv)
 
 print("Processed all files from " + args.directory)
 
 #export_all_intervals_to_csv(ivs)
+#export_all_event_counts(ivs)
+#asdf()
 
-ivs_norm = []
-ivs_anom = []
-for iv in ivs:
-    if iv.experiment.label == "normal":
-        ivs_norm.append(iv)
-    else:
-        ivs_anom.append(iv)
-random.shuffle(ivs_norm)
-split_point = math.ceil(len(ivs_norm) * args.train_ratio)
-ivs_train = ivs_norm[:split_point]
-ivs_test_norm = ivs_norm[split_point:]
-ivs_test_anom = ivs_anom
+#ivs_norm_default = []
+#ivs_norm_other = []
+#ivs_anom = []
+#for iv in ivs:
+#    if iv.experiment.label == "normal":
+#        if iv.experiment.description == "default":
+#            ivs_norm_default.append(iv)
+#        else:
+#            ivs_norm_other.append(iv)
+#    else:
+#        ivs_anom.append(iv)
+#random.shuffle(ivs_norm_default)
 
-print("Normal batches: " + str(len(ivs_norm)))
-print("  Normal batches for training: " + str(len(ivs_train)))
-print("  Normal batches for testing: " + str(len(ivs_test_norm)))
-print("Anomalous batches: " + str(len(ivs_test_anom)))
+# Get training data from normal data (default case) and remove it from test data
+ivs_train = {}
+for description in ivs[normal_key]:
+    random.shuffle(ivs[normal_key][description])
+    split_point = math.ceil(len(ivs[normal_key][description]) * args.train_ratio)
+    ivs_train[description] = ivs[normal_key][description][:split_point]
+    ivs[normal_key][description] = ivs[normal_key][description][split_point:]
+
+#ivs_test_anom = ivs_anom
+
+#ivs_norm = []
+#ivs_anom = []
+#for iv in ivs:
+#    if iv.experiment.label == "normal":
+#        ivs_norm.append(iv)
+#    else:
+#        ivs_anom.append(iv)
+#random.shuffle(ivs_norm)
+#split_point = math.ceil(len(ivs_norm) * args.train_ratio)
+#ivs_train = ivs_norm[:split_point]
+#ivs_test_norm = ivs_norm[split_point:]
+#ivs_test_anom = ivs_anom
+
+print("Normal batches: " + str(sum(len(value) for value in ivs[normal_key].values()) + sum(len(value) for value in ivs_train.values())))
+print("  Normal batches for training: " + str(sum(len(value) for value in ivs_train.values())))
+for description in ivs_train:
+    print("    " + description + ": " + str(len(ivs_train[description])))
+print("  Normal batches for testing: " + str(sum(len(value) for value in ivs[normal_key].values())))
+for description in ivs[normal_key]:
+    print("    " + description + ": " + str(len(ivs[normal_key][description])))
+print("Anomalous batches: " + str(sum(len(value) for value in ivs[rootkit_key].values())))
+for description in ivs[rootkit_key]:
+    print("  " + description + ": " + str(len(ivs[rootkit_key][description])))
 
 quantiles = np.linspace(0, 1 - 1 / args.quantiles, args.quantiles) # Excludes 1 to avoid last term (which is usually an outlier), e.g., for args.quantiles = 100 will result in 0, 0.01, 0.02, ..., 0.99
-run_test(ivs_train, ivs_test_norm, ivs_test_anom, quantiles)
+run_test(ivs_train, ivs, quantiles)
