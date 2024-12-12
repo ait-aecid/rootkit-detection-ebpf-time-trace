@@ -5,7 +5,7 @@ normal_count=150
 rootkit_count=100
 
 # Default: Loop normal 150 times
-for i in {1..$normal_count}; do
+for ((i = 1; i <= normal_count; i++)); do
     echo "Iteration $i:"
     sudo python3 probing.py -n --description default
     echo "Sleeping for $sleep_time seconds..."
@@ -13,7 +13,7 @@ for i in {1..$normal_count}; do
 done
 
 # Default: Loop rootkit 100 times
-for i in {1..$rootkit_count}; do
+for ((i = 1; i <= rootkit_count; i++)); do
     echo "Iteration $i:"
     sudo python3 probing.py -r --description default
     echo "Sleeping for $sleep_time seconds..."
@@ -21,7 +21,7 @@ for i in {1..$rootkit_count}; do
 done
 
 # Random file count in range 10-100: Loop normal 150 times
-for i in {1..$normal_count}; do
+for ((i = 1; i <= normal_count; i++)); do
     echo "Iteration $i:"
     visible_files=$((10 + RANDOM % 91))
     hidden_files=$((10 + RANDOM % 91))
@@ -31,7 +31,7 @@ for i in {1..$normal_count}; do
 done
 
 # Random file count in range 10-100: Loop rootkit 100 times
-for i in {1..$rootkit_count}; do
+for ((i = 1; i <= rootkit_count; i++)); do
     echo "Iteration $i:"
     visible_files=$((10 + RANDOM % 91))
     hidden_files=$((10 + RANDOM % 91))
@@ -41,7 +41,7 @@ for i in {1..$rootkit_count}; do
 done
 
 # System load: Loop normal and rootkit 150 times
-for i in {1..$normal_count}; do
+for ((i = 1; i <= normal_count; i++)); do
     echo "Iteration $i:"
     sudo python3 probing.py -n --load --description system_load
     echo "Sleeping for $sleep_time seconds..."
@@ -49,7 +49,7 @@ for i in {1..$normal_count}; do
 done
 
 # System load: Loop normal and rootkit 100 times
-for i in {1..$rootkit_count}; do
+for ((i = 1; i <= rootkit_count; i++)); do
     echo "Iteration $i:"
     sudo python3 probing.py -r --load --description system_load
     echo "Sleeping for $sleep_time seconds..."
@@ -57,7 +57,7 @@ for i in {1..$rootkit_count}; do
 done
 
 # Execute ls-basic: Loop normal 150 times
-for i in {1..$normal_count}; do
+for ((i = 1; i <= normal_count; i++)); do
     echo "Iteration $i:"
     sudo python3 probing.py -n --executable ./ls-basic --description ls_basic
     echo "Sleeping for $sleep_time seconds..."
@@ -65,7 +65,7 @@ for i in {1..$normal_count}; do
 done
 
 # Execute ls-basic: Loop rootkit 100 times
-for i in {1..$rootkit_count}; do
+for ((i = 1; i <= rootkit_count; i++)); do
     echo "Iteration $i:"
     sudo python3 probing.py -r --executable ./ls-basic --description ls_basic
     echo "Sleeping for $sleep_time seconds..."
@@ -73,7 +73,7 @@ for i in {1..$rootkit_count}; do
 done
 
 # Execute filename length: Loop normal 150 times
-for i in {1..$normal_count}; do
+for ((i = 1; i <= normal_count; i++)); do
     echo "Iteration $i:"
     file_name_length=$((20 + RANDOM % 41))
     sudo python3 probing.py -n --file-name-length $file_name_length --description filename_length
@@ -82,7 +82,7 @@ for i in {1..$normal_count}; do
 done
 
 # Execute filename length: Loop rootkit 100 times
-for i in {1..$rootkit_count}; do
+for ((i = 1; i <= rootkit_count; i++)); do
     echo "Iteration $i:"
     file_name_length=$((20 + RANDOM % 41))
     sudo python3 probing.py -r --file-name-length $file_name_length --description filename_length
