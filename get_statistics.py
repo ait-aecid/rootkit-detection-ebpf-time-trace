@@ -77,6 +77,8 @@ for filename in tqdm(files):
             start_times[experiment.description][experiment.label] = file_date
         end_times[experiment.description][experiment.label] = file_date
         num_events[experiment.description][experiment.label].append(len(experiment.events))
+        #print(len(experiment.events))
+        #asdf()
         num_batches[experiment.description][experiment.label] += 1
         processes = {}
         for event in experiment.events:
@@ -109,7 +111,7 @@ for filename in tqdm(files):
         num_function_pairs[experiment.description][experiment.label].append(len(function_pairs))
 for description, d in num_events.items():
     for label, res in d.items():
-        num_events_per_batch = np.array(num_events[description][label]) / num_batches[description][label]
+        #num_events_per_batch = np.array(num_events[description][label]) / num_batches[description][label]
         num_intervals_per_batch = np.array(num_intervals[description][label]) / num_batches[description][label] # This is almost the same as num_events_per_batch, because all pairs of events are considered (i.e., num_events - 1 intervals for num_events events)
         s = description + " & " 
         s += label + " & " 
@@ -117,7 +119,8 @@ for description, d in num_events.items():
         s += end_times[description][label] + " & "
         s += str(num_batches[description][label]) + " & " 
         #s += str(round(np.mean(num_events_per_batch), 2)) + ", " + str(round(np.var(num_events_per_batch), 2)) + " & " 
-        s += str(round(np.median(num_events_per_batch), 2))
+        #s += str(round(np.median(num_events_per_batch), 2))
+        s += str(round(np.median(num_events[description][label]), 0))
         #s += str(np.mean(num_intervals_per_batch)) + ", " + str(np.var(num_intervals_per_batch)) + " & "
         #s += str(np.mean(num_functions[description][label])) + " & " 
         #s += str(round(np.mean(num_function_pairs[description][label]), 2))  + " & "

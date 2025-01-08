@@ -177,7 +177,8 @@ def export_all_intervals_to_csv(ivs):
                 for iv in iv_list:
                     iv.export_intervals_to_csv(out)
 
-def export_all_intervals_to_pca(ivs, quantiles):
+def export_all_intervals_to_pca(ivs, num_q):
+    quantiles = np.linspace(0, 1 - 1 / (num_q + 1), (num_q + 1))[1:]
     names = set()
     for label, ivs_dict in ivs.items():
         for description, iv_list in ivs_dict.items():
@@ -189,7 +190,10 @@ def export_all_intervals_to_pca(ivs, quantiles):
         s = ""
         for name in names:
             for q in quantiles:
-                s += name + "-" + str(q) + ","
+                s += name 
+                if num_q > 1:
+                    s += "-" + str(q)
+                s += ","
         #out.write('label,description,' + ','.join(names) + '\n')
         out.write('label,description,' + s[:-1] + '\n')
         for label, ivs_dict in ivs.items():
@@ -213,19 +217,19 @@ def get_fone(tp, fn, tn, fp):
 def compute_results(do_print, name, tp, fn, tn, fp, threshold, det_time):
     # Compute metrics and return a dictionary with results
     if tp + fn == 0:
-        tpr = "inf"
+        tpr = 0 # "inf"
     else:
         tpr = tp / (tp + fn)
     if fp + tn == 0:
-        fpr = "inf"
+        fpr = 0 # "inf"
     else:
         fpr = fp / (fp + tn)
     if tn + fp == 0:
-        tnr = "inf"
+        tnr = 0 # "inf"
     else:
         tnr = tn / (tn + fp)
     if tp + fp == 0:
-        p = "inf"
+        p = 0 # "inf"
     else:
         p = tp / (tp + fp)
     fone = get_fone(tp, fn, tn, fp)
@@ -314,7 +318,7 @@ def get_quantile_vals(batches, quantiles):
                 num_obs[name] += len(interv_list)
     return vals, num_obs
 
-def get_crits(train_mean, train_var, train_num_obs, test_vals, test_num_obs, quantiiles):
+def get_crits(train_mean, train_var, train_cov_inv, train_num_obs, test_vals, test_num_obs, quantiiles):
     crits = {}
     for name in train_mean:
         if name not in test_vals:
@@ -324,9 +328,12 @@ def get_crits(train_mean, train_var, train_num_obs, test_vals, test_num_obs, qua
         if test_num_obs[name] < len(quantiles):
             continue
         crits[name] = {}
-        test_vals_scaled = (test_vals[name] - train_mean[name]) / np.sqrt(train_var[name])
-        mhd = np.sum(test_vals_scaled**2)
-        p_value = 1 - chi2.cdf(mhd, df=len(quantiles))
+        #test_vals_scaled = (test_vals[name] - train_mean[name]) / np.sqrt(train_var[name])
+        #mhd = np.sum(test_vals_scaled**2)
+        #p_value = 1 - chi2.cdf(mhd, df=len(quantiles))
+        diff = test_vals[name] - train_mean[name]
+        mhd_sq = np.sum(diff @ train_cov_inv[name] * diff)
+        p_value = 1 - chi2.cdf(mhd_sq, df=len(quantiles))
         #print(name, p_value, np.mean(test_vals[name] - train_mean[name]))
         crits[name] = p_value
     return crits
@@ -334,7 +341,7 @@ def get_crits(train_mean, train_var, train_num_obs, test_vals, test_num_obs, qua
 def get_stats(data, num_batches):
     mean = {}
     var = {}
-    cov = {}
+    #cov = {}
     cov_inv = {}
     for name, vals in data.items():
         if len(vals) < num_batches / 2:
@@ -342,23 +349,34 @@ def get_stats(data, num_batches):
             continue
         mean[name] = np.mean(vals, axis=0)
         var[name] = np.var(vals, axis=0, ddof=0)
+        cov = np.cov(vals, rowvar=False)
+        try:
+            cov_inv[name] = np.linalg.inv(cov)
+        except np.linalg.LinAlgError:
+            try:
+                cov += 1e-6 * np.eye(cov.shape[0])
+                cov_inv[name] = np.linalg.inv(cov)
+            except np.linalg.LinAlgError:
+                cov_inv[name] = np.linalg.pinv(cov)
         #print("  " + name + " " + str(len(vals)))
         #print("  " + str(var[name]))
-    return mean, var
+    return mean, var, cov_inv
 
 def run_supervised(train, test, quantiles, run, grouping, out_best, out_all, out_c):
     train_num_obs = {}
     train_mean = {}
     train_var = {}
+    train_cov_inv = {}
     descriptions = set()
     for label, train_dict in train.items():
         train_num_obs[label] = {}
         train_mean[label] = {}
         train_var[label] = {}
+        train_cov_inv[label] = {}
         for description, train_batches in train_dict.items():
             descriptions.add(description)
             train_vals, train_num_obs[label][description] = get_quantile_vals(train_batches, quantiles)
-            train_mean[label][description], train_var[label][description] = get_stats(train_vals, len(train_batches))
+            train_mean[label][description], train_var[label][description], train_cov_inv[label][description] = get_stats(train_vals, len(train_batches))
     pred_pos_act_pos, pred_neg_act_pos, pred_neg_act_neg, pred_pos_act_neg = {}, {}, {}, {}
     tp, fp, tn, fn = {}, {}, {}, {}
     start_time = time.time()
@@ -390,8 +408,9 @@ def run_supervised(train, test, quantiles, run, grouping, out_best, out_all, out
                 highest_pv = -1
                 for label_train, _ in train_mean.items():
                     for description_train in train_mean[label_train]: # ["default"]: # train_mean:
-                        pv_dict = get_crits(train_mean[label_train][description_train], train_var[label_train][description_train], train_num_obs[label_train][description_train], test_vals, test_num_obs, quantiles)
-                        critical_value = np.mean(list(pv_dict.values()))
+                        pv_dict = get_crits(train_mean[label_train][description_train], train_var[label_train][description_train], train_cov_inv[label_train][description_train], train_num_obs[label_train][description_train], test_vals, test_num_obs, quantiles)
+                        #critical_value = np.mean(list(pv_dict.values()))
+                        critical_value = sum(list(pv_dict.values()))
                         #critical_value = min(list(pv_dict.values()))
                         if critical_value > highest_pv:
                             best_label = label_train
@@ -459,7 +478,133 @@ def run_supervised(train, test, quantiles, run, grouping, out_best, out_all, out
     print_confusion("Confusion Matrix (Run " + str(run) + ")", pred_pos_act_pos, pred_neg_act_pos, pred_neg_act_neg, pred_pos_act_neg, run, grouping, out_c)
     out_best.write(str(run) + "," + str(grouping) + "," + str(np.mean(avg["f1"])) + "," + str(np.mean(avg["tp"])) + "," + str(np.mean(avg["fp"])) + "," + str(np.mean(avg["tn"])) + "," + str(np.mean(avg["fn"])) + "," + str(np.mean(avg["time"])) + "," + str(len(quantiles)) + "," + str(np.mean(avg["threshold"])) + "," + str(np.mean(avg["tpr"])) + "," + str(np.mean(avg["fpr"])) + "," + str(np.mean(avg["tnr"])) + "," + str(np.mean(avg["p"])) + "," + str(np.mean(avg["acc"])) + "\n")
     return avg
-    
+   
+def get_sim(train_vals, test_vals):
+    names = set(train_vals.keys()).intersection(test_vals.keys())
+    squared_diff_sum = 0
+    for name in names:
+        squared_diff_sum += (train_vals[name] - test_vals[name]) ** 2
+    return math.sqrt(squared_diff_sum)
+
+def run_supervised_alt(train, test, quantiles, run, grouping, out_best, out_all, out_c):
+    train_num_obs = {}
+    #train_mean = {}
+    #train_var = {}
+    #train_cov_inv = {}
+    train_vals = {}
+    descriptions = set()
+    for label, train_dict in train.items():
+        train_num_obs[label] = {}
+        #train_mean[label] = {}
+        #train_var[label] = {}
+        #train_cov_inv[label] = {}
+        train_vals[label] = {}
+        for description, train_batches in train_dict.items():
+            descriptions.add(description)
+            train_vals[label][description], train_num_obs[label][description] = get_quantile_vals(train_batches, quantiles)
+            #train_mean[label][description], train_var[label][description], train_cov_inv[label][description] = get_stats(train_vals, len(train_batches))
+    pred_pos_act_pos, pred_neg_act_pos, pred_neg_act_neg, pred_pos_act_neg = {}, {}, {}, {}
+    tp, fp, tn, fn = {}, {}, {}, {}
+    start_time = time.time()
+    for d_pred in descriptions:
+        pred_pos_act_pos[d_pred] = {}
+        pred_neg_act_pos[d_pred] = {}
+        pred_neg_act_neg[d_pred] = {}
+        pred_pos_act_neg[d_pred] = {}
+        tp[d_pred] = {}
+        fp[d_pred] = {}
+        tn[d_pred] = {}
+        fn[d_pred] = {}
+        for d_act in descriptions:
+            pred_pos_act_pos[d_pred][d_act] = 0
+            pred_neg_act_pos[d_pred][d_act] = 0
+            pred_neg_act_neg[d_pred][d_act] = 0
+            pred_pos_act_neg[d_pred][d_act] = 0
+        for label in [rootkit_key, normal_key]:
+            tp[d_pred][label] = 0
+            fp[d_pred][label] = 0
+            tn[d_pred][label] = 0
+            fn[d_pred][label] = 0
+    for label_act in test: #["normal"]: #test:
+        for d_act, test_batches in test[label_act].items():
+            for i, test_batch in enumerate(test_batches):
+                test_vals, test_num_obs = get_quantile_vals([test_batch], quantiles)
+                best_label = None
+                best_description = None
+                highest_pv = -1
+                for label_train, _ in train_mean.items():
+                    for description_train in train_mean[label_train]: # ["default"]: # train_mean:
+                        #pv_dict = get_crits(train_mean[label_train][description_train], train_var[label_train][description_train], train_cov_inv[label_train][description_train], train_num_obs[label_train][description_train], test_vals, test_num_obs, quantiles)
+                        #critical_value = np.mean(list(pv_dict.values()))
+                        ##critical_value = min(list(pv_dict.values()))
+                        critical_value = get_sim(train_vals[label_train][description_train], test_vals)
+                        if critical_value > highest_pv:
+                            best_label = label_train
+                            best_description = description_train
+                            highest_pv = critical_value
+                #conf_mat[d_act][best_description] += 1
+                #if d_act == best_description and label_act == best_label:
+                #    print("Actual " + str(d_act) + " " + str(label_act) + ", predicted " + str(best_description) + " " + str(best_label) + " CORRECT!!!")
+                #else:
+                #    print("Actual " + str(d_act) + " " + str(label_act) + ", predicted " + str(best_description) + " " + str(best_label))
+                if label_act == best_label and d_act == best_description:
+                    # Correct classification; add +1 to classified description/label for TP and +1 to all other description/label for TN
+                    for eval_description in descriptions:
+                        for eval_label in [rootkit_key, normal_key]:
+                            if eval_description == d_act and eval_label == label_act:
+                                tp[eval_description][eval_label] += 1
+                            else:
+                                tn[eval_description][eval_label] += 1
+                else:
+                    # Incorrect classification; add +1 to misclassified actual value for FN, +1 for incorrect predicted value for FP, and +1 to all other description/label for TN
+                    for eval_description in descriptions:
+                        for eval_label in [rootkit_key, normal_key]:
+                            if eval_description == d_act and eval_label == label_act:
+                                fn[eval_description][eval_label] += 1
+                            elif eval_description == best_description and eval_label == best_label:
+                                fp[eval_description][eval_label] += 1
+                            else:
+                                tn[eval_description][eval_label] += 1
+                # Fill in confusion matrix
+                if label_act == rootkit_key and best_label == rootkit_key:
+                    #print("Actual RK, Pred RK")
+                    pred_pos_act_pos[d_act][best_description] += 1
+                elif label_act == rootkit_key and best_label == normal_key:
+                    #print("Actual RK, Pred Norm")
+                    pred_neg_act_pos[d_act][best_description] += 1
+                elif label_act == normal_key and best_label == normal_key:
+                    #print("Actual Norm, Pred Norm")
+                    pred_neg_act_neg[d_act][best_description] += 1
+                elif label_act == normal_key and best_label == rootkit_key:
+                    #print("Actual Norm, Pred RK")
+                    pred_pos_act_neg[d_act][best_description] += 1
+                else:
+                    print("Labels " + label_act + " or " + best_label + " not one of [" + rootkit_key + ", " + normal_key + "]")
+                #for eval_description in descriptions:
+                #    if description == eval_description:
+                #        if label == best_label:
+                #            tp[eval_description] += 1
+                #        else:
+                #            fp[eval_description] += 1
+                #    else:
+                #        if label == best_label:
+                #            fn[eval_description] += 1
+                #        else:
+                #            tn[eval_description] += 1
+    used_time = time.time() - start_time
+    avg = {}
+    for description in descriptions:
+        for label in [rootkit_key, normal_key]:
+            res = compute_results(True, description + "/" + label + " Results (Run " + str(run) + ")", tp[description][label], fn[description][label], tn[description][label], fp[description][label], -1, used_time)
+            out_all.write(str(run) + "," + str(grouping) + "," + description + "," + label + "," + str(res["f1"]) + "," + str(res["tp"]) + "," + str(res["fp"]) + "," + str(res["tn"]) + "," + str(res["fn"]) + "," + str(res["time"]) + "," + str(len(quantiles)) + "," + str(res["threshold"]) + "," + str(res["tpr"]) + "," + str(res["fpr"]) + "," + str(res["tnr"]) + "," + str(res["p"]) + "," + str(res["acc"]) + "\n")
+            for metric, val in res.items():
+                if metric not in avg:
+                    avg[metric] = []
+                avg[metric].append(val)
+    print_confusion("Confusion Matrix (Run " + str(run) + ")", pred_pos_act_pos, pred_neg_act_pos, pred_neg_act_neg, pred_pos_act_neg, run, grouping, out_c)
+    out_best.write(str(run) + "," + str(grouping) + "," + str(np.mean(avg["f1"])) + "," + str(np.mean(avg["tp"])) + "," + str(np.mean(avg["fp"])) + "," + str(np.mean(avg["tn"])) + "," + str(np.mean(avg["fn"])) + "," + str(np.mean(avg["time"])) + "," + str(len(quantiles)) + "," + str(np.mean(avg["threshold"])) + "," + str(np.mean(avg["tpr"])) + "," + str(np.mean(avg["fpr"])) + "," + str(np.mean(avg["tnr"])) + "," + str(np.mean(avg["p"])) + "," + str(np.mean(avg["acc"])) + "\n")
+    return avg
+
 def run_online(ivs, processing_order, num_train, quantiles, run, grouping, out_all, out_best, out_detail):
     train_batches = [] # ivs[normal_key][processing_order][:num_train]
     step = 0
@@ -479,10 +624,10 @@ def run_online(ivs, processing_order, num_train, quantiles, run, grouping, out_a
                     continue
                 # Test the current batch against the current list of training batches
                 train_vals, train_num_obs = get_quantile_vals(train_batches, quantiles)
-                train_mean, train_var = get_stats(train_vals, len(train_batches))
+                train_mean, train_var, train_cov_inv = get_stats(train_vals, len(train_batches))
                 #print(step)
                 test_vals, test_num_obs = get_quantile_vals([batch], quantiles)
-                pv_dict = get_crits(train_mean, train_var, train_num_obs, test_vals, test_num_obs, quantiles)
+                pv_dict = get_crits(train_mean, train_var, train_cov_inv, train_num_obs, test_vals, test_num_obs, quantiles)
                 for name, pv in pv_dict.items():
                     out_detail.write(str(run) + "," + str(grouping) + "," + str(batch.timestamp) + "," + str(step) + "," + str(steps_since_label_change) + "," + str(label) + "," + str(description) + "," + str(name) + "," + str(len(quantiles)) + "," + str(pv) + "\n")
                 if steps_since_label_change == 1:
@@ -523,7 +668,7 @@ def run_online(ivs, processing_order, num_train, quantiles, run, grouping, out_a
         res_tmp = compute_results(False, "not_print", tp, fn, tn, fp, thresh, -1)
         out_all.write(str(run) + "," + str(grouping) + "," + str(fone) + "," + str(tp) + "," + str(fp) + "," + str(tn) + "," + str(fn) + "," + str(-1) + "," + str(len(quantiles)) + "," + str(thresh) + "," + str(res_tmp["tpr"]) + "," + str(res_tmp["fpr"]) + "," + str(res_tmp["tnr"]) + "," + str(res_tmp["p"]) + "," + str(res_tmp["acc"]) + "\n")
         total_time = time.time() - start_time
-        if best_metrics["fone"] is None or fone >= best_metrics["fone"]:
+        if best_metrics["fone"] is None or fone > best_metrics["fone"]:
             best_metrics["fone"] = fone
             best_metrics["tp"] = tp
             best_metrics["fp"] = fp
@@ -539,11 +684,12 @@ def run_offline(train, test, quantiles, run, grouping, out_best, out_all, out_c)
     train_num_obs = {}
     train_mean = {}
     train_var = {}
+    train_cov_inv = {}
     #descriptions = set()
     for description, train_batches in train.items():
         #descriptions.add(description)
         train_vals, train_num_obs[description] = get_quantile_vals(train_batches, quantiles)
-        train_mean[description], train_var[description] = get_stats(train_vals, len(train_batches))
+        train_mean[description], train_var[description], train_cov_inv[description] = get_stats(train_vals, len(train_batches))
     crits = {}
     for label in test: #["normal"]: #test:
         for description_train in train_mean: # ["default"]: # train_mean:
@@ -561,7 +707,7 @@ def run_offline(train, test, quantiles, run, grouping, out_best, out_all, out_c)
                 for i, test_batch in enumerate(test_batches):
                     #print(i)
                     test_vals, test_num_obs = get_quantile_vals([test_batch], quantiles)
-                    crits[label][description_train][description].append(get_crits(train_mean[description_train], train_var[description_train], train_num_obs[description_train], test_vals, test_num_obs, quantiles))
+                    crits[label][description_train][description].append(get_crits(train_mean[description_train], train_var[description_train], train_cov_inv[description_train], train_num_obs[description_train], test_vals, test_num_obs, quantiles))
     best_metrics = {"fone": None, "tp": None, "fp": None, "tn": None, "fn": None, "time": None, "thresh": None, "name_counts": None}
     for thresh in np.logspace(-30, 0, num=100):
         start_time = time.time()
@@ -624,7 +770,7 @@ def run_offline(train, test, quantiles, run, grouping, out_best, out_all, out_c)
         res_tmp = compute_results(False, "not_print", tp, fn, tn, fp, thresh, -1)
         out_all.write(str(run) + "," + str(grouping) + "," + str(fone) + "," + str(tp) + "," + str(fp) + "," + str(tn) + "," + str(fn) + "," + str(-1) + "," + str(len(quantiles)) + "," + str(thresh) + "," + str(res_tmp["tpr"]) + "," + str(res_tmp["fpr"]) + "," + str(res_tmp["tnr"]) + "," + str(res_tmp["p"]) + "," + str(res_tmp["acc"]) + "\n")
         total_time = time.time() - start_time
-        if best_metrics["fone"] is None or fone >= best_metrics["fone"]:
+        if best_metrics["fone"] is None or fone > best_metrics["fone"]:
             best_metrics["fone"] = fone
             best_metrics["tp"] = tp
             best_metrics["fp"] = fp
@@ -652,10 +798,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--directory", "-d", default="events", type=str, help="Directory containing event data.")
 parser.add_argument("--train_ratio", "-t", default=0.333, help="Fraction of normal data used for training.", type=float)
 parser.add_argument("--seed", "-s", default=None, help="Seed for random sampling.", type=int)
-parser.add_argument("--quantiles", "-q", default=1, help="Number of quantiles.", type=int)
+parser.add_argument("--quantiles", "-q", default=9, help="Number of quantiles.", type=int)
 parser.add_argument("--repeat", "-r", default=1, help="Repeat experiment with different training samples multiple times (only in offline mode).", type=int)
 parser.add_argument("--mode", "-m", default="offline", choices=["offline", "supervised", "online"], help="Evaluate mode.", type=str)
-parser.add_argument("--grouping", "-g", default="seq", choices=["seq", "fun"], help="Grouping of events to interval either sequentially (independent of type and enter/return) or between enter and return of same function type.", type=str)
+parser.add_argument("--grouping", "-g", default="fun", choices=["seq", "fun"], help="Grouping of events to interval either sequentially (independent of type and enter/return) or between enter and return of same function type.", type=str)
 
 args = parser.parse_args()
 
@@ -688,8 +834,8 @@ print("Processed all files from " + args.directory)
 print("")
 
 #export_all_intervals_to_csv(ivs)
-#export_all_intervals_to_pca(ivs, np.linspace(0, 1 - 1 / args.quantiles, args.quantiles))
-#asdf()
+#export_all_intervals_to_pca(ivs, args.quantiles)
+#exit()
 
 if args.mode == "offline":
     with open("results_offline_best_" + args.grouping + ".csv", "w+") as out_best, open("results_offline_all_" + args.grouping + ".csv", "w+") as out_all, open("results_offline_confusion_" + args.grouping + ".csv", "w+") as out_c:
@@ -723,10 +869,10 @@ if args.mode == "offline":
                 print("  " + description + ": " + str(len(ivs[rootkit_key][description])))
             
             if args.quantiles > 0:
-                quantiles = np.linspace(0, 1 - 1 / args.quantiles, args.quantiles) # Excludes 1 to avoid last term (which is usually an outlier), e.g., for args.quantiles = 100 will result in 0, 0.01, 0.02, ..., 0.99
+                quantiles = np.linspace(0, 1 - 1 / (args.quantiles + 1), (args.quantiles + 1))[1:] # Excludes 1 to avoid last term (which is usually an outlier), e.g., for args.quantiles = 100 will result in 0, 0.01, 0.02, ..., 0.99
             else:
                 # This case is just used to test teh influence of the number of quantiles
-                quantiles = np.linspace(0, 1 - 1 / run, run) # Increase the number of quantiles by 1 in every run
+                quantiles = np.linspace(0, 1 - 1 / (run + 1), (run + 1))[1:] # Increase the number of quantiles by 1 in every run
             best_metrics = run_offline(ivs_train, ivs, quantiles, run, args.grouping, out_best, out_all, out_c)
         
             # Return training data to normal data in case that there is another iteration
@@ -748,11 +894,12 @@ elif args.mode == "online":
             for processing_step in processing_order:
                 print("  " + processing_step + " " + normal_key + ": " + str(len(ivs[normal_key][processing_step])) + " batches")
                 print("  " + processing_step + " " + rootkit_key + ": " + str(len(ivs[rootkit_key][processing_step])) + " batches")
+            
             if args.quantiles > 0:
-                quantiles = np.linspace(0, 1 - 1 / args.quantiles, args.quantiles) # Excludes 1 to avoid last term (which is usually an outlier), e.g., for args.quantiles = 100 will result in 0, 0.01, 0.02, ..., 0.99
+                quantiles = np.linspace(0, 1 - 1 / (args.quantiles + 1), (args.quantiles + 1))[1:] # Excludes 1 to avoid last term (which is usually an outlier), e.g., for args.quantiles = 100 will result in 0, 0.01, 0.02, ..., 0.99
             else:
                 # This case is just used to test the influence of the number of quantiles
-                quantiles = np.linspace(0, 1 - 1 / run, run) # Increase the number of quantiles by 1 in every run
+                quantiles = np.linspace(0, 1 - 1 / (run + 1), (run + 1))[1:] # Increase the number of quantiles by 1 in every run
             run_online(ivs, processing_order, num_train, quantiles, run, args.grouping, out_all, out_best, out_detail)
 elif args.mode == "supervised":
     with open("results_supervised_best_" + args.grouping + ".csv", "w+") as out_best, open("results_supervised_all_" + args.grouping + ".csv", "w+") as out_all, open("results_supervised_confusion_" + args.grouping + ".csv", "w+") as out_c:
@@ -786,10 +933,10 @@ elif args.mode == "supervised":
                 print("    " + description + ": " + str(len(ivs[rootkit_key][description])))
             
             if args.quantiles > 0:
-                quantiles = np.linspace(0, 1 - 1 / args.quantiles, args.quantiles) # Excludes 1 to avoid last term (which is usually an outlier), e.g., for args.quantiles = 100 will result in 0, 0.01, 0.02, ..., 0.99
+                quantiles = np.linspace(0, 1 - 1 / (args.quantiles + 1), (args.quantiles + 1))[1:] # Excludes 1 to avoid last term (which is usually an outlier), e.g., for args.quantiles = 100 will result in 0, 0.01, 0.02, ..., 0.99
             else:
                 # This case is just used to test the influence of the number of quantiles
-                quantiles = np.linspace(0, 1 - 1 / run, run) # Increase the number of quantiles by 1 in every run
+                quantiles = np.linspace(0, 1 - 1 / (run + 1), (run + 1))[1:] # Increase the number of quantiles by 1 in every run
             best_metrics = run_supervised(ivs_train, ivs, quantiles, run, args.grouping, out_best, out_all, out_c)
 
             # Return training data to normal data in case that there is another iteration
