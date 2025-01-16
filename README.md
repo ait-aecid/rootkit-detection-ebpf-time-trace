@@ -1,8 +1,7 @@
 # Rootkit Detection with eBPF Time Tracing
 
->**Disclaimer**: This repository is the source code release corresponding to academic work,
->if you came here via github or google search it is unlikely that this will be useful for you.
->The documentation assumes familiarity with the corresponding Thesis/Paper.
+If you use any of the resources provided in this repository, please cite the following publication:
+* Landauer, M., Alton, L., Lindorfer, M., Skopik, F., Wurzenberger, M., & Hotwagner, W. (2025). Trace of the Times: Rootkit Detection through Temporal Anomalies in Kernel Activity. Under Review.
 
 ## Structure
 
@@ -127,6 +126,11 @@ On the target machine, execute the experiment:
 `python detection.py --normal --rootkit --iterations 100 --executable ./my_custom_ls "My first experiment"`.
 
 This will create a datafile `experimentTimeStamp.json.gz`.
+
+# Citation
+
+If you use any of the resources provided in this repository, please cite the following publication:
+* Landauer, M., Alton, L., Lindorfer, M., Skopik, F., Wurzenberger, M., & Hotwagner, W. (2025). Trace of the Times: Rootkit Detection through Temporal Anomalies in Kernel Activity. Under Review.
 
 Then, to perform analysis over the data, feed the file to an instance of `process_data.py:Plot`,
 or simply run `run.py`.
