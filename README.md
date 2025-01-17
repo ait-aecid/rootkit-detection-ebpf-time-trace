@@ -143,18 +143,18 @@ Results (Run 1)
 
 Confusion Matrix (Run 1)
 Predicted
-default         file_count      system_load     ls_basic        filename_length
-Pos     Neg     Pos     Neg     Pos     Neg     Pos     Neg     Pos     Neg
-100     0       100     0       100     0       100     0       100     0               Pos - Actual    default
-3       97      100     0       99      1       100     0       2       98              Neg - Actual    default
-100     0       100     0       100     0       100     0       100     0               Pos - Actual    file_count
-100     0       0       100     100     0       100     0       100     0               Neg - Actual    file_count
-100     0       100     0       100     0       100     0       100     0               Pos - Actual    system_load
-100     0       100     0       4       96      100     0       100     0               Neg - Actual    system_load
-100     0       100     0       100     0       99      1       100     0               Pos - Actual    ls_basic
-100     0       100     0       100     0       2       98      100     0               Neg - Actual    ls_basic
-99      1       100     0       100     0       100     0       100     0               Pos - Actual    filename_length
-3       97      100     0       99      1       100     0       0       100             Neg - Actual    filename_length
+default     file_count  system_load ls_basic    filename_length
+Pos   Neg   Pos   Neg   Pos   Neg   Pos   Neg   Pos   Neg
+100   0     100   0     100   0     100   0     100   0      Pos - Actual default
+3     97    100   0     99    1     100   0     2     98     Neg - Actual default
+100   0     100   0     100   0     100   0     100   0      Pos - Actual file_count
+100   0     0     100   100   0     100   0     100   0      Neg - Actual file_count
+100   0     100   0     100   0     100   0     100   0      Pos - Actual system_load
+100   0     100   0     4     96    100   0     100   0      Neg - Actual system_load
+100   0     100   0     100   0     99    1     100   0      Pos - Actual ls_basic
+100   0     100   0     100   0     2     98    100   0      Neg - Actual ls_basic
+99    1     100   0     100   0     100   0     100   0      Pos - Actual filename_length
+3     97    100   0     99    1     100   0     0     100    Neg - Actual filename_length
 ```
 
 Check out the manual using `python3 evaluate.py -h` to learn more about available parameters of this script.
