@@ -81,7 +81,7 @@ Saved data to events/events_2025-01-17T09:59:52.183801_rootkit.json.gz
 412K    events/events_2025-01-17T09:59:52.183801_rootkit.json.gz
 ```
 
-Measurements are stored in the `events` directory. Check out the help page with `python3 probing.py -h` to learn about other parameters that allow to set up data collection in other scenarios (e.g., using `ls-basic` instead of `ls` or simulating system load) and assign names to different runs (`--description`). To specify which functions the probing mechanism should attach probes to, open `probing.py` and add or remove function names in the `probe_points` list in the beginning of the file. 
+Measurements are stored in the `events` directory. Check out the help page with `python3 probing.py -h` to learn about other parameters that allow to set up data collection in other scenarios (e.g., using `ls-basic` instead of `ls` or simulating system load) and assign names to different runs (`--description`). Check out `repeat_seq.sh` for some parameterized commands; in fact, we used this script to collect our public data sets. Note that we only consider some of the available kernel functions from the getdents system call. To specify which functions the probing mechanism should attach probes to, open `probing.py` and add or remove function names in the `probe_points` list in the beginning of the file. 
 
 ## Anomaly detection
 
@@ -157,7 +157,7 @@ Pos   Neg   Pos   Neg   Pos   Neg   Pos   Neg   Pos   Neg
 3     97    100   0     99    1     100   0     0     100    Neg - Actual filename_length
 ```
 
-Check out the manual using `python3 evaluate.py -h` to learn more about available parameters of this script.
+Check out the manual using `python3 evaluate.py -h` to learn more about available parameters of this script. Also, have a look at `demo.sh` to see the parameterized commands that we used for the evaluation in our paper.
 
 # Citation
 
