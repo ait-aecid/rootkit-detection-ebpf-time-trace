@@ -7,6 +7,8 @@ This repository contains code to collect time measurements of kernel functions t
 
 The following steps setup up the rootkit and explain how to collect time measurements from kernel functions. In case that you are only interested in the detection of anomalies and want to use our public data sets, you can skip this section.
 
+### Setup
+
 The rootkit and probing has been tested on Linux kernels 5.15-6.11 and Python 3.10. To run the tools, download this repository and install the following dependencies required to run the rootkit and probing mechanism.
 
 ```sh
@@ -42,6 +44,8 @@ Afterwards, return to this repository and open `linux.py` to edit the variable `
 ubuntu@ubuntu:~/caraxes$ cd ../rootkit-detection-ebpf-time-trace
 ubuntu@ubuntu:~/rootkit-detection-ebpf-time-trace$ vim linux.py
 ```
+
+### Measurement of kernel function timings
 
 Now you are ready to run the probing mechanism that will automatically inject probes into the kernel, start the rootkit, store time measurement data into a file, and stop the rootkit. To trigger system calls, the script thereby creates a directory with files to be hidden and executes `ls` 100 times (can be modified with the `-i` flag) while polling the probes. The script allows to collect measurments with the rootkit (`--rootkit` flag), without the rootkit (`--normal` flag), or both, and supports several scenarios. Run the default scenario with the following command:
 
