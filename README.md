@@ -103,7 +103,7 @@ ubuntu@ubuntu:~/rootkit-detection-ebpf-time-trace$ unzip events.zip
 Now you are ready to run the anomaly detection as follows. Specify the directory containing measurement data (`-d`), the fration of normal data used for training (`-t`), the mode of operation (`-m`) and the grouping function (`-g`). The script will load all files from the specified directory, split them into training and testing data (summarized in the output), compute and print detection metrics, and plot a confusion matrix.
 
 ```sh
-python3 evaluate.py -d events -t 0.333 -m offline -g fun
+ubuntu@ubuntu:~/rootkit-detection-ebpf-time-trace$ python3 evaluate.py -d events -t 0.333 -m offline -g fun
 100%|█████████████████████████████████████████████| 1250/1250 [02:47<00:00,  7.45it/s]
 Processed all files from events
 
