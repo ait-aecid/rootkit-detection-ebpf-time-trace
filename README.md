@@ -93,10 +93,11 @@ ubuntu@ubuntu:~$ cd rootkit-detection-ebpf-time-trace
 ubuntu@ubuntu:~/rootkit-detection-ebpf-time-trace$ pip install -r requirements.txt
 ```
 
-Then, download and extract the data set from Zenodo. If you generated your own data in the previous step and want to use it, skip this step.
+Then, download and extract the data set we provide on [Zenodo](https://zenodo.org/records/14679675). If you generated your own data in the previous step and want to use it, skip this step.
 
 ```sh
-
+ubuntu@ubuntu:~/rootkit-detection-ebpf-time-trace$ wget https://zenodo.org/records/14679675/files/events.zip
+ubuntu@ubuntu:~/rootkit-detection-ebpf-time-trace$ unzip events.zip
 ```
 
 Now you are ready to run the anomaly detection as follows. Specify the directory containing measurement data (`-d`), the fration of normal data used for training (`-t`), the mode of operation (`-m`) and the grouping function (`-g`). The script will load all files from the specified directory, split them into training and testing data (summarized in the output), compute and print detection metrics, and plot a confusion matrix.
