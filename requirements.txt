@@ -1,3 +1,6 @@
+numpy
+scipy
+tqdm
 matplotlib
 pandas
 pandasql

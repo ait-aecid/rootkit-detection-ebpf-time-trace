@@ -1,9 +1,3 @@
-#import array
-#from itertools import chain
-#from statistics import median
-from typing import *
-
-#from multiprocessing import Process
 import argparse
 import sys
 import os
@@ -14,19 +8,16 @@ import time
 import random
 import json
 import numpy as np
-#import pandas as pd
 from data_classes import Event, Interval, experiment_from_json
-#from scipy.stats import ttest_ind
-#from scipy.stats import norm
 from scipy.stats import chi2
 from tqdm import tqdm
-#import psutil
+from typing import *
 
 normal_key = "normal"
 rootkit_key = "rootkit"
 
 class Intervals:
-    def __init__(self, filename, grouping=None):
+    def __init__(self, filename, events_dir_name, grouping=None):
         self.args = []
         self.intervals = {}
         self.intervals_time = {}
@@ -45,7 +36,7 @@ class Intervals:
             json_obj = json.load(file)
             experiment = experiment_from_json(json_obj)
 
-        self.file_date = filename.replace("events/", "").replace("experiment", "").replace(".json", "").replace(".gz", "") # TODO replace events with dir
+        self.file_date = filename.replace(events_dir_name + "/", "").replace("experiment", "").replace(".json", "").replace(".gz", "")
         self.timestamp = filename[(filename.find("T") + 1):filename.find(".")].replace("_", ":")
 
         processes = {}
@@ -614,7 +605,7 @@ for filename in tqdm(files):
     
     # Check if it's a file (not a directory or symbolic link)
     if os.path.isfile(filepath):
-        iv = Intervals(filepath, args.grouping)
+        iv = Intervals(filepath, args.directory, args.grouping)
         if iv.experiment.label == normal_key:
             if iv.experiment.description not in ivs[normal_key]:
                 ivs[normal_key][iv.experiment.description] = []
