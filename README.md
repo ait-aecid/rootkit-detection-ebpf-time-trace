@@ -165,5 +165,3 @@ Check out the manual using `python3 evaluate.py -h` to learn more about availabl
 If you use any of the resources provided in this repository, please cite the following publication:
 * Landauer, M., Alton, L., Lindorfer, M., Skopik, F., Wurzenberger, M., & Hotwagner, W. (2025). Trace of the Times: Rootkit Detection through Temporal Anomalies in Kernel Activity. Under Review.
 
-Then, to perform analysis over the data, feed the file to an instance of `process_data.py:Plot`,
-or simply run `run.py`.
