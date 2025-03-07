@@ -15,7 +15,7 @@ The rootkit and probing has been tested on Linux kernels 5.15-6.11 and Python 3.
 ubuntu@ubuntu:~$ git clone https://github.com/ait-aecid/rootkit-detection-ebpf-time-trace.git
 ubuntu@ubuntu:~$ cd rootkit-detection-ebpf-time-trace
 ubuntu@ubuntu:~/rootkit-detection-ebpf-time-trace$ sudo apt update
-ubuntu@ubuntu:~/rootkit-detection-ebpf-time-trace$ sudo apt install python3-bpfcc make gcc flex bison linux-headers-$(uname -r)
+ubuntu@ubuntu:~/rootkit-detection-ebpf-time-trace$ sudo apt install python3-bpfcc make gcc flex bison python3-pip linux-headers-$(uname -r)
 ubuntu@ubuntu:~/rootkit-detection-ebpf-time-trace$ pip install -r requirements.txt
 ```
 
