@@ -270,7 +270,7 @@ def get_quantile_vals(batches, quantiles):
                 num_obs[name] += len(interv_list)
     return vals, num_obs
 
-def get_crits(train_mean, train_var, train_cov_inv, train_num_obs, test_vals, test_num_obs, quantiiles):
+def get_crits(train_mean, train_var, train_cov_inv, train_num_obs, test_vals, test_num_obs, quantiles):
     crits = {}
     for name in train_mean:
         if name not in test_vals:
