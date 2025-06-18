@@ -16,6 +16,59 @@ from typing import *
 normal_key = "normal"
 rootkit_key = "rootkit"
 
+parser = argparse.ArgumentParser()
+parser.add_argument("--directory", "-d", default="events", type=str, help="Directory containing event data.")
+parser.add_argument("--train_ratio", "-t", default=0.333, help="Fraction of normal data used for training.", type=float)
+parser.add_argument("--seed", "-s", default=None, help="Seed for random sampling.", type=int)
+parser.add_argument("--quantiles", "-q", default=9, help="Number of quantiles.", type=int)
+parser.add_argument("--repeat", "-r", default=1, help="Repeat experiment with different training samples multiple times (only in offline mode).", type=int)
+parser.add_argument("--mode", "-m", default="offline", choices=["offline", "supervised", "online"], help="Evaluate mode.", type=str)
+parser.add_argument("--grouping", "-g", default="fun", choices=["seq", "fun"], help="Grouping of events to interval either sequentially (independent of type and enter/return) or between enter and return of same function type.", type=str)
+parser.add_argument("--approach", "-a", default="shift", choices=["shift", "ann", "lumped"], help="Approach used for detection - shift is based on Landauer et al. (2025), ann is based on Luckett et al. (2016), lumped is based on Lu et al. (2019).")
+parser.add_argument("--export_intervals", "-e", action="store_true", help="Write intervals to file (change interval grouping mode with --grouping parameter)")
+
+args = parser.parse_args()
+
+if args.approach == "ann":
+    print("Loading torch (required for --approach ann)...")
+    import torch
+    import torch.nn as nn
+    import torch.nn.functional as F
+    print("Loaded torch")
+
+    class SampleEncoder(nn.Module):
+        def __init__(self, input_dim=1, hidden_dim=32):
+            super().__init__()
+            self.mlp = nn.Sequential(
+                nn.Linear(input_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Linear(hidden_dim, hidden_dim)
+            )
+    
+        def forward(self, x):
+            return self.mlp(x)
+    
+    class DeepSetsEncoder(nn.Module):
+        def __init__(self, input_dim=1, hidden_dim=32, num_features=4):
+            super().__init__()
+            self.encoder = SampleEncoder(input_dim, hidden_dim)
+            self.num_features = num_features
+            self.output_dim = num_features * hidden_dim
+    
+        def forward(self, batch):
+            batch_embeddings = []
+            for features in batch:
+                feature_embeddings = []
+                for feature_set in features:
+                    encoded = self.encoder(feature_set)
+                    aggregated = encoded.mean(dim=0)
+                    feature_embeddings.append(aggregated)
+                batch_embedding = torch.cat(feature_embeddings, dim=0)
+                batch_embeddings.append(batch_embedding)
+            return torch.stack(batch_embeddings, dim=0)
+
+random.seed(args.seed)
+
 class Intervals:
     def __init__(self, filename, events_dir_name, grouping=None):
         self.args = []
@@ -212,7 +265,7 @@ def compute_results(do_print, name, tp, fn, tn, fp, threshold, det_time):
         print("")
     return {'tp': tp, 'fp': fp, 'tn': tn, 'fn': fn, 'tpr': tpr, 'fpr': fpr, 'tnr': tnr, 'p': p, 'f1': fone, 'acc': acc, 'threshold': threshold, 'name': name, 'time': det_time}
 
-def print_confusion(name, tp_c, fn_c, tn_c, fp_c, run, grouping, out_c):
+def print_confusion(name, tp_c, fn_c, tn_c, fp_c, run, grouping, approach, out_c):
     print(name)
     print("Predicted")
     s = ""
@@ -226,10 +279,10 @@ def print_confusion(name, tp_c, fn_c, tn_c, fp_c, run, grouping, out_c):
         s = ""
         for description in inner_dict:
             s += str(tp_c[description_train][description]) + "\t" + str(fn_c[description_train][description]) + "\t"
-            out_c.write(str(run) + "," + str(grouping) + "," + description_train + ",Pos" + "," + description + ",Pos" + "," + str(tp_c[description_train][description]) + "\n")
-            out_c.write(str(run) + "," + str(grouping) + "," + description_train + ",Neg" + "," + description + ",Pos" + "," + str(fn_c[description_train][description]) + "\n")
-            out_c.write(str(run) + "," + str(grouping) + "," + description_train + ",Pos" + "," + description + ",Neg" + "," + str(fp_c[description_train][description]) + "\n")
-            out_c.write(str(run) + "," + str(grouping) + "," + description_train + ",Neg" + "," + description + ",Neg" + "," + str(tn_c[description_train][description]) + "\n")
+            out_c.write(str(run) + "," + approach + "," + str(grouping) + "," + description_train + ",Pos" + "," + description + ",Pos" + "," + str(tp_c[description_train][description]) + "\n")
+            out_c.write(str(run) + "," + approach + "," + str(grouping) + "," + description_train + ",Neg" + "," + description + ",Pos" + "," + str(fn_c[description_train][description]) + "\n")
+            out_c.write(str(run) + "," + approach + "," + str(grouping) + "," + description_train + ",Pos" + "," + description + ",Neg" + "," + str(fp_c[description_train][description]) + "\n")
+            out_c.write(str(run) + "," + approach + "," + str(grouping) + "," + description_train + ",Neg" + "," + description + ",Neg" + "," + str(tn_c[description_train][description]) + "\n")
         s += "\tPos - Actual\t" + description_train + "\n"
         for description in inner_dict:
             s += str(fp_c[description_train][description]) + "\t" + str(tn_c[description_train][description]) + "\t"
@@ -310,7 +363,53 @@ def get_stats(data, num_batches):
                 cov_inv[name] = np.linalg.pinv(cov)
     return mean, var, cov_inv
 
-def run_supervised(train, test, quantiles, run, grouping, out_best, out_all, out_c):
+def get_crits_ann(model, center, std, feature_names, test_batch):
+    model.eval()
+    crits = {}
+    with torch.no_grad():
+        feature_tensor_list = intervals_to_tensors([test_batch], feature_names)
+        embeddings = model(feature_tensor_list)
+        distances = torch.norm(embeddings - center, dim=1)
+        crits["ann"] = 1.0 / distances.tolist()[0]
+    return crits
+
+def intervals_to_tensors(batches, feature_names):
+    # Collect delta times as tensors for neural network
+    feature_tensor_list = []
+    for batch in batches:
+        feature_tensors = []
+        for name in feature_names:
+            tensor = None
+            if name in batch.intervals_time:
+                data = batch.intervals_time[name]
+                tensor = torch.tensor(data, dtype=torch.float32).unsqueeze(1)
+            else:
+                tensor = torch.empty((0, 1), dtype=torch.float32)
+            feature_tensors.append(tensor)
+        feature_tensor_list.append(feature_tensors)
+    return feature_tensor_list
+
+def get_model_ann(batches, feature_names):
+    feature_tensor_list = intervals_to_tensors(batches, feature_names)
+    # Create and train neural network with normal batches
+    model = DeepSetsEncoder()
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    model.train()
+    epochs = 50
+    for epoch in tqdm(range(1, epochs + 1)):
+        total_loss = 0
+        optimizer.zero_grad()
+        embeddings = model(feature_tensor_list)
+        center = embeddings.mean(dim=0)
+        distances = torch.norm(embeddings - center, dim=1)
+        loss = distances.mean()
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item()
+        tqdm.write(f"Epoch {epoch}: Avg Embedding Spread Loss = {total_loss / 100:.4f}")
+    return model
+
+def run_supervised(train, test, quantiles, run, grouping, approach, out_best, out_all, out_c):
     train_num_obs = {}
     train_mean = {}
     train_var = {}
@@ -396,16 +495,16 @@ def run_supervised(train, test, quantiles, run, grouping, out_best, out_all, out
     for description in descriptions:
         for label in [rootkit_key, normal_key]:
             res = compute_results(True, description + "/" + label + " Results (Run " + str(run) + ")", tp[description][label], fn[description][label], tn[description][label], fp[description][label], -1, used_time)
-            out_all.write(str(run) + "," + str(grouping) + "," + description + "," + label + "," + str(res["f1"]) + "," + str(res["tp"]) + "," + str(res["fp"]) + "," + str(res["tn"]) + "," + str(res["fn"]) + "," + str(res["time"]) + "," + str(len(quantiles)) + "," + str(res["threshold"]) + "," + str(res["tpr"]) + "," + str(res["fpr"]) + "," + str(res["tnr"]) + "," + str(res["p"]) + "," + str(res["acc"]) + "\n")
+            out_all.write(str(run) + "," + approach + "," + str(grouping) + "," + description + "," + label + "," + str(res["f1"]) + "," + str(res["tp"]) + "," + str(res["fp"]) + "," + str(res["tn"]) + "," + str(res["fn"]) + "," + str(res["time"]) + "," + str(len(quantiles)) + "," + str(res["threshold"]) + "," + str(res["tpr"]) + "," + str(res["fpr"]) + "," + str(res["tnr"]) + "," + str(res["p"]) + "," + str(res["acc"]) + "\n")
             for metric, val in res.items():
                 if metric not in avg:
                     avg[metric] = []
                 avg[metric].append(val)
-    print_confusion("Confusion Matrix (Run " + str(run) + ")", pred_pos_act_pos, pred_neg_act_pos, pred_neg_act_neg, pred_pos_act_neg, run, grouping, out_c)
-    out_best.write(str(run) + "," + str(grouping) + "," + str(np.mean(avg["f1"])) + "," + str(np.mean(avg["tp"])) + "," + str(np.mean(avg["fp"])) + "," + str(np.mean(avg["tn"])) + "," + str(np.mean(avg["fn"])) + "," + str(np.mean(avg["time"])) + "," + str(len(quantiles)) + "," + str(np.mean(avg["threshold"])) + "," + str(np.mean(avg["tpr"])) + "," + str(np.mean(avg["fpr"])) + "," + str(np.mean(avg["tnr"])) + "," + str(np.mean(avg["p"])) + "," + str(np.mean(avg["acc"])) + "\n")
+    print_confusion("Confusion Matrix (Run " + str(run) + ")", pred_pos_act_pos, pred_neg_act_pos, pred_neg_act_neg, pred_pos_act_neg, run, grouping, approach, out_c)
+    out_best.write(str(run) + "," + approach + "," + str(grouping) + "," + str(np.mean(avg["f1"])) + "," + str(np.mean(avg["tp"])) + "," + str(np.mean(avg["fp"])) + "," + str(np.mean(avg["tn"])) + "," + str(np.mean(avg["fn"])) + "," + str(np.mean(avg["time"])) + "," + str(len(quantiles)) + "," + str(np.mean(avg["threshold"])) + "," + str(np.mean(avg["tpr"])) + "," + str(np.mean(avg["fpr"])) + "," + str(np.mean(avg["tnr"])) + "," + str(np.mean(avg["p"])) + "," + str(np.mean(avg["acc"])) + "\n")
     return avg
    
-def run_online(ivs, processing_order, num_train, quantiles, run, grouping, out_all, out_best, out_detail):
+def run_online(ivs, processing_order, num_train, quantiles, run, grouping, approach, out_all, out_best, out_detail):
     train_batches = []
     step = 0
     crits = {}
@@ -420,7 +519,7 @@ def run_online(ivs, processing_order, num_train, quantiles, run, grouping, out_a
                 if len(train_batches) < num_train:
                     # For the first few batches, fill up the list of training batches
                     train_batches.append(batch)
-                    out_detail.write(str(run) + "," + str(grouping) + "," + str(batch.timestamp) + "," + str(step) + "," + str(steps_since_label_change) + "," + str(label) + "," + str(description) + ",training_dummy," + str(len(quantiles)) + ",1\n")
+                    out_detail.write(str(run) + "," + approach + "," + str(grouping) + "," + str(batch.timestamp) + "," + str(step) + "," + str(steps_since_label_change) + "," + str(label) + "," + str(description) + ",training_dummy," + str(len(quantiles)) + ",1\n")
                     continue
                 # Test the current batch against the current list of training batches
                 train_vals, train_num_obs = get_quantile_vals(train_batches, quantiles)
@@ -428,7 +527,7 @@ def run_online(ivs, processing_order, num_train, quantiles, run, grouping, out_a
                 test_vals, test_num_obs = get_quantile_vals([batch], quantiles)
                 pv_dict = get_crits(train_mean, train_var, train_cov_inv, train_num_obs, test_vals, test_num_obs, quantiles)
                 for name, pv in pv_dict.items():
-                    out_detail.write(str(run) + "," + str(grouping) + "," + str(batch.timestamp) + "," + str(step) + "," + str(steps_since_label_change) + "," + str(label) + "," + str(description) + "," + str(name) + "," + str(len(quantiles)) + "," + str(pv) + "\n")
+                    out_detail.write(str(run) + "," + approach + "," + str(grouping) + "," + str(batch.timestamp) + "," + str(step) + "," + str(steps_since_label_change) + "," + str(label) + "," + str(description) + "," + str(name) + "," + str(len(quantiles)) + "," + str(pv) + "\n")
                 if steps_since_label_change == 1:
                     # This batch is the first one with a new label; anomaly is expected
                     crits[rootkit_key].append(pv_dict)
@@ -465,7 +564,7 @@ def run_online(ivs, processing_order, num_train, quantiles, run, grouping, out_a
                         tn += 1
         fone = get_fone(tp, fn, tn, fp)
         res_tmp = compute_results(False, "not_print", tp, fn, tn, fp, thresh, -1)
-        out_all.write(str(run) + "," + str(grouping) + "," + str(fone) + "," + str(tp) + "," + str(fp) + "," + str(tn) + "," + str(fn) + "," + str(-1) + "," + str(len(quantiles)) + "," + str(thresh) + "," + str(res_tmp["tpr"]) + "," + str(res_tmp["fpr"]) + "," + str(res_tmp["tnr"]) + "," + str(res_tmp["p"]) + "," + str(res_tmp["acc"]) + "\n")
+        out_all.write(str(run) + "," + approach + "," + str(grouping) + "," + str(fone) + "," + str(tp) + "," + str(fp) + "," + str(tn) + "," + str(fn) + "," + str(-1) + "," + str(len(quantiles)) + "," + str(thresh) + "," + str(res_tmp["tpr"]) + "," + str(res_tmp["fpr"]) + "," + str(res_tmp["tnr"]) + "," + str(res_tmp["p"]) + "," + str(res_tmp["acc"]) + "\n")
         total_time = time.time() - start_time
         if best_metrics["fone"] is None or fone > best_metrics["fone"]:
             best_metrics["fone"] = fone
@@ -476,34 +575,77 @@ def run_online(ivs, processing_order, num_train, quantiles, run, grouping, out_a
             best_metrics["time"] = total_time
             best_metrics["thresh"] = thresh
     res = compute_results(True, "Results (Run " + str(run) + ")", best_metrics["tp"], best_metrics["fn"], best_metrics["tn"], best_metrics["fp"], best_metrics["thresh"], best_metrics["time"])
-    out_best.write(str(run) + "," + str(grouping) + "," + str(res["f1"]) + "," + str(res["tp"]) + "," + str(res["fp"]) + "," + str(res["tn"]) + "," + str(res["fn"]) + "," + str(res["time"]) + "," + str(len(quantiles)) + "," + str(res["threshold"]) + "," + str(res["tpr"]) + "," + str(res["fpr"]) + "," + str(res["tnr"]) + "," + str(res["p"]) + "," + str(res["acc"]) + "\n")
+    out_best.write(str(run) + "," + approach + "," + str(grouping) + "," + str(res["f1"]) + "," + str(res["tp"]) + "," + str(res["fp"]) + "," + str(res["tn"]) + "," + str(res["fn"]) + "," + str(res["time"]) + "," + str(len(quantiles)) + "," + str(res["threshold"]) + "," + str(res["tpr"]) + "," + str(res["fpr"]) + "," + str(res["tnr"]) + "," + str(res["p"]) + "," + str(res["acc"]) + "\n")
     return best_metrics
 
-def run_offline(train, test, quantiles, run, grouping, out_best, out_all, out_c):
-    train_num_obs = {}
-    train_mean = {}
-    train_var = {}
-    train_cov_inv = {}
-    for description, train_batches in train.items():
-        train_vals, train_num_obs[description] = get_quantile_vals(train_batches, quantiles)
-        train_mean[description], train_var[description], train_cov_inv[description] = get_stats(train_vals, len(train_batches))
-    crits = {}
-    for label in test:
-        for description_train in train_mean:
-            # Interate through all training models
-            for description, test_batches in test[label].items():
-                # For each training model, iterate through all test values
-                if label not in crits:
-                    crits[label] = {}
-                if description_train not in crits[label]:
-                    crits[label][description_train] = {}
-                if description not in crits[label][description_train]:
-                    crits[label][description_train][description] = []
-                for i, test_batch in enumerate(test_batches):
-                    test_vals, test_num_obs = get_quantile_vals([test_batch], quantiles)
-                    crits[label][description_train][description].append(get_crits(train_mean[description_train], train_var[description_train], train_cov_inv[description_train], train_num_obs[description_train], test_vals, test_num_obs, quantiles))
+def run_offline(train, test, quantiles, run, grouping, approach, out_best, out_all, out_c):
+    if approach == "ann":
+        # ANN Detection
+        threshold_search_space = np.logspace(-30, 0, num=100)
+        opt_size = 0.5 # Fraction of training data to be used for center/std computation
+        model = {}
+        feature_names_dict = {}
+        centers = {}
+        stds = {}
+        for description, train_batches in train.items():
+            train_split = round(len(train_batches) * (1 - opt_size))
+            train_batches_init = train_batches[:train_split]
+            train_batches_opt = train_batches[train_split:]
+            # Collect feature names so that they are always in order in the next steps
+            feature_names = []
+            for batch in train_batches_init:
+                for name in batch.intervals_time:
+                    feature_names.append(name)
+            feature_names_dict[description] = feature_names
+            # Compute model with initial batches
+            model[description] = get_model_ann(train_batches_init, feature_names)
+            with torch.no_grad():
+                # Compute model statistics with opt batches
+                normal_embeddings = model[description](intervals_to_tensors(train_batches_opt, feature_names))
+                centers[description] = normal_embeddings.mean(dim=0)
+                stds[description] = normal_embeddings.std(dim=0)
+        crits = {}
+        for label in test:
+            print(label)
+            for description_train in model:
+                # Interate through all training models
+                for description, test_batches in test[label].items():
+                    # For each training model, iterate through all test values
+                    if label not in crits:
+                        crits[label] = {}
+                    if description_train not in crits[label]:
+                        crits[label][description_train] = {}
+                    if description not in crits[label][description_train]:
+                        crits[label][description_train][description] = []
+                    for i, test_batch in enumerate(test_batches):
+                        crits[label][description_train][description].append(get_crits_ann(model[description_train], centers[description], stds[description], feature_names_dict[description_train], test_batch))
+    else:
+        # Shift detection
+        threshold_search_space = np.logspace(-30, 0, num=100)
+        train_num_obs = {}
+        train_mean = {}
+        train_var = {}
+        train_cov_inv = {}
+        for description, train_batches in train.items():
+            train_vals, train_num_obs[description] = get_quantile_vals(train_batches, quantiles)
+            train_mean[description], train_var[description], train_cov_inv[description] = get_stats(train_vals, len(train_batches))
+        crits = {}
+        for label in test:
+            for description_train in train_mean:
+                # Interate through all training models
+                for description, test_batches in test[label].items():
+                    # For each training model, iterate through all test values
+                    if label not in crits:
+                        crits[label] = {}
+                    if description_train not in crits[label]:
+                        crits[label][description_train] = {}
+                    if description not in crits[label][description_train]:
+                        crits[label][description_train][description] = []
+                    for i, test_batch in enumerate(test_batches):
+                        test_vals, test_num_obs = get_quantile_vals([test_batch], quantiles)
+                        crits[label][description_train][description].append(get_crits(train_mean[description_train], train_var[description_train], train_cov_inv[description_train], train_num_obs[description_train], test_vals, test_num_obs, quantiles))
     best_metrics = {"fone": None, "tp": None, "fp": None, "tn": None, "fn": None, "time": None, "thresh": None, "name_counts": None}
-    for thresh in np.logspace(-30, 0, num=100):
+    for thresh in threshold_search_space:
         start_time = time.time()
         tp, fp, tn, fn = 0, 0, 0, 0 # Counts differentiate only normal and anomalous classes, independent from sub-classes
         tp_c, fp_c, tn_c, fn_c = {}, {}, {}, {} # Use sub-classes for the confusion matrix
@@ -553,7 +695,7 @@ def run_offline(train, test, quantiles, run, grouping, out_best, out_all, out_c)
                                 tn_c[description_train][description] += 1
         fone = get_fone(tp, fn, tn, fp)
         res_tmp = compute_results(False, "not_print", tp, fn, tn, fp, thresh, -1)
-        out_all.write(str(run) + "," + str(grouping) + "," + str(fone) + "," + str(tp) + "," + str(fp) + "," + str(tn) + "," + str(fn) + "," + str(-1) + "," + str(len(quantiles)) + "," + str(thresh) + "," + str(res_tmp["tpr"]) + "," + str(res_tmp["fpr"]) + "," + str(res_tmp["tnr"]) + "," + str(res_tmp["p"]) + "," + str(res_tmp["acc"]) + "\n")
+        out_all.write(str(run) + "," + approach + "," + str(grouping) + "," + str(fone) + "," + str(tp) + "," + str(fp) + "," + str(tn) + "," + str(fn) + "," + str(-1) + "," + str(len(quantiles)) + "," + str(thresh) + "," + str(res_tmp["tpr"]) + "," + str(res_tmp["fpr"]) + "," + str(res_tmp["tnr"]) + "," + str(res_tmp["p"]) + "," + str(res_tmp["acc"]) + "\n")
         total_time = time.time() - start_time
         if best_metrics["fone"] is None or fone > best_metrics["fone"]:
             best_metrics["fone"] = fone
@@ -569,8 +711,8 @@ def run_offline(train, test, quantiles, run, grouping, out_best, out_all, out_c)
             best_metrics["fp_c"] = fp_c
             best_metrics["name_counts"] = name_counts
     res = compute_results(True, "Results (Run " + str(run) + ")", best_metrics["tp"], best_metrics["fn"], best_metrics["tn"], best_metrics["fp"], best_metrics["thresh"], best_metrics["time"])
-    print_confusion("Confusion Matrix (Run " + str(run) + ")", best_metrics["tp_c"], best_metrics["fn_c"], best_metrics["tn_c"], best_metrics["fp_c"], run, grouping, out_c)
-    out_best.write(str(run) + "," + str(grouping) + "," + str(res["f1"]) + "," + str(res["tp"]) + "," + str(res["fp"]) + "," + str(res["tn"]) + "," + str(res["fn"]) + "," + str(res["time"]) + "," + str(len(quantiles)) + "," + str(res["threshold"]) + "," + str(res["tpr"]) + "," + str(res["fpr"]) + "," + str(res["tnr"]) + "," + str(res["p"]) + "," + str(res["acc"]) + "\n")
+    print_confusion("Confusion Matrix (Run " + str(run) + ")", best_metrics["tp_c"], best_metrics["fn_c"], best_metrics["tn_c"], best_metrics["fp_c"], run, grouping, approach, out_c)
+    out_best.write(str(run) + "," + approach + "," + str(grouping) + "," + str(res["f1"]) + "," + str(res["tp"]) + "," + str(res["fp"]) + "," + str(res["tn"]) + "," + str(res["fn"]) + "," + str(res["time"]) + "," + str(len(quantiles)) + "," + str(res["threshold"]) + "," + str(res["tpr"]) + "," + str(res["fpr"]) + "," + str(res["tnr"]) + "," + str(res["p"]) + "," + str(res["acc"]) + "\n")
     if False:
         print("Function pairs that reported most anomalies:")
         for label, name_counts_dict in best_metrics["name_counts"].items():
@@ -578,20 +720,6 @@ def run_offline(train, test, quantiles, run, grouping, out_best, out_all, out_c)
             for name, cnt in name_counts_dict.items():
                 print("  " + name + ": " + str(cnt))
     return best_metrics
-
-parser = argparse.ArgumentParser()
-parser.add_argument("--directory", "-d", default="events", type=str, help="Directory containing event data.")
-parser.add_argument("--train_ratio", "-t", default=0.333, help="Fraction of normal data used for training.", type=float)
-parser.add_argument("--seed", "-s", default=None, help="Seed for random sampling.", type=int)
-parser.add_argument("--quantiles", "-q", default=9, help="Number of quantiles.", type=int)
-parser.add_argument("--repeat", "-r", default=1, help="Repeat experiment with different training samples multiple times (only in offline mode).", type=int)
-parser.add_argument("--mode", "-m", default="offline", choices=["offline", "supervised", "online"], help="Evaluate mode.", type=str)
-parser.add_argument("--grouping", "-g", default="fun", choices=["seq", "fun"], help="Grouping of events to interval either sequentially (independent of type and enter/return) or between enter and return of same function type.", type=str)
-parser.add_argument("--export_intervals", "-e", action="store_true", help="Write intervals to file (change interval grouping mode with --grouping parameter)")
-
-args = parser.parse_args()
-
-random.seed(args.seed)
 
 if not os.path.isdir(args.directory):
     print("Error: " + args.directory + " is not a valid directory.")
@@ -624,9 +752,9 @@ if args.export_intervals:
 
 if args.mode == "offline":
     with open("results_offline_best_" + args.grouping + ".csv", "w+") as out_best, open("results_offline_all_" + args.grouping + ".csv", "w+") as out_all, open("results_offline_confusion_" + args.grouping + ".csv", "w+") as out_c:
-        out_best.write("run,group,fone,tp,fp,tn,fn,time,q,thresh,tpr,fpr,tnr,p,acc\n")
-        out_all.write("run,group,fone,tp,fp,tn,fn,time,q,thresh,tpr,fpr,tnr,p,acc\n")
-        out_c.write("run,group,pred,pred_class,actual,actual_class,cnt\n")
+        out_best.write("run,approach,group,fone,tp,fp,tn,fn,time,q,thresh,tpr,fpr,tnr,p,acc\n")
+        out_all.write("run,approach,group,fone,tp,fp,tn,fn,time,q,thresh,tpr,fpr,tnr,p,acc\n")
+        out_c.write("run,approach,group,pred,pred_class,actual,actual_class,cnt\n")
         for run in range(args.repeat):
             run += 1 # Start with run #1
             # Get training data from normal data (default case) and remove it from test data
@@ -654,16 +782,16 @@ if args.mode == "offline":
             else:
                 # This case is just used to test teh influence of the number of quantiles
                 quantiles = np.linspace(0, 1 - 1 / (run + 1), (run + 1))[1:] # Increase the number of quantiles by 1 in every run
-            best_metrics = run_offline(ivs_train, ivs, quantiles, run, args.grouping, out_best, out_all, out_c)
+            best_metrics = run_offline(ivs_train, ivs, quantiles, run, args.grouping, args.approach, out_best, out_all, out_c)
         
             # Return training data to normal data in case that there is another iteration
             for description in ivs_train:
                 ivs[normal_key][description].extend(ivs_train[description])
 elif args.mode == "online":
     with open("results_online_detail_" + args.grouping + ".csv", "w+") as out_detail, open("results_online_best_" + args.grouping + ".csv", "w+") as out_best, open("results_online_all_" + args.grouping + ".csv", "w+") as out_all:
-        out_detail.write("run,group,ts,step,anom_step,label,description,name,q,pv\n")
-        out_best.write("run,group,fone,tp,fp,tn,fn,time,q,thresh,tpr,fpr,tnr,p,acc\n")
-        out_all.write("run,group,fone,tp,fp,tn,fn,time,q,thresh,tpr,fpr,tnr,p,acc\n")
+        out_detail.write("run,approach,group,ts,step,anom_step,label,description,name,q,pv\n")
+        out_best.write("run,approach,group,fone,tp,fp,tn,fn,time,q,thresh,tpr,fpr,tnr,p,acc\n")
+        out_all.write("run,approach,group,fone,tp,fp,tn,fn,time,q,thresh,tpr,fpr,tnr,p,acc\n")
         for run in range(args.repeat):
             run += 1 # Start with run #1
             processing_order = list(list(ivs.values())[0])
@@ -681,13 +809,13 @@ elif args.mode == "online":
             else:
                 # This case is just used to test the influence of the number of quantiles
                 quantiles = np.linspace(0, 1 - 1 / (run + 1), (run + 1))[1:] # Increase the number of quantiles by 1 in every run
-            run_online(ivs, processing_order, num_train, quantiles, run, args.grouping, out_all, out_best, out_detail)
+            run_online(ivs, processing_order, num_train, quantiles, run, args.grouping, args.approach, out_all, out_best, out_detail)
 elif args.mode == "supervised":
     # Be aware that this mode is experimental and does not yield good results
     with open("results_supervised_best_" + args.grouping + ".csv", "w+") as out_best, open("results_supervised_all_" + args.grouping + ".csv", "w+") as out_all, open("results_supervised_confusion_" + args.grouping + ".csv", "w+") as out_c:
-        out_best.write("run,group,fone,tp,fp,tn,fn,time,q,thresh,tpr,fpr,tnr,p,acc\n")
-        out_all.write("run,group,description,label,fone,tp,fp,tn,fn,time,q,thresh,tpr,fpr,tnr,p,acc\n")
-        out_c.write("run,group,pred,pred_class,actual,actual_class,cnt\n")
+        out_best.write("run,approach,group,fone,tp,fp,tn,fn,time,q,thresh,tpr,fpr,tnr,p,acc\n")
+        out_all.write("run,approach,group,description,label,fone,tp,fp,tn,fn,time,q,thresh,tpr,fpr,tnr,p,acc\n")
+        out_c.write("run,approach,group,pred,pred_class,actual,actual_class,cnt\n")
         for run in range(args.repeat):
             run += 1 # Start with run #1
             ivs_train = {}
@@ -719,7 +847,7 @@ elif args.mode == "supervised":
             else:
                 # This case is just used to test the influence of the number of quantiles
                 quantiles = np.linspace(0, 1 - 1 / (run + 1), (run + 1))[1:] # Increase the number of quantiles by 1 in every run
-            best_metrics = run_supervised(ivs_train, ivs, quantiles, run, args.grouping, out_best, out_all, out_c)
+            best_metrics = run_supervised(ivs_train, ivs, quantiles, run, args.grouping, args.approach, out_best, out_all, out_c)
 
             # Return training data to normal data in case that there is another iteration
             for label in ivs:
