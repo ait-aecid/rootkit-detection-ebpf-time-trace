@@ -751,7 +751,7 @@ if args.export_intervals:
     # Use the following command to store intervals for PCA: export_all_intervals_to_pca(ivs, args.quantiles)
 
 if args.mode == "offline":
-    with open("results_offline_best_" + args.grouping + ".csv", "w+") as out_best, open("results_offline_all_" + args.grouping + ".csv", "w+") as out_all, open("results_offline_confusion_" + args.grouping + ".csv", "w+") as out_c:
+    with open("results_offline_best_" + args.approach + "_" + args.grouping + ".csv", "w+") as out_best, open("results_offline_all_" + args.approach + "_" + args.grouping + ".csv", "w+") as out_all, open("results_offline_confusion_" + args.approach + "_" + args.grouping + ".csv", "w+") as out_c:
         out_best.write("run,approach,group,fone,tp,fp,tn,fn,time,q,thresh,tpr,fpr,tnr,p,acc\n")
         out_all.write("run,approach,group,fone,tp,fp,tn,fn,time,q,thresh,tpr,fpr,tnr,p,acc\n")
         out_c.write("run,approach,group,pred,pred_class,actual,actual_class,cnt\n")
@@ -788,7 +788,7 @@ if args.mode == "offline":
             for description in ivs_train:
                 ivs[normal_key][description].extend(ivs_train[description])
 elif args.mode == "online":
-    with open("results_online_detail_" + args.grouping + ".csv", "w+") as out_detail, open("results_online_best_" + args.grouping + ".csv", "w+") as out_best, open("results_online_all_" + args.grouping + ".csv", "w+") as out_all:
+    with open("results_online_detail_" + args.approach + "_" + args.grouping + ".csv", "w+") as out_detail, open("results_online_best_" + args.approach + "_" + args.grouping + ".csv", "w+") as out_best, open("results_online_all_" + args.approach + "_" + args.grouping + ".csv", "w+") as out_all:
         out_detail.write("run,approach,group,ts,step,anom_step,label,description,name,q,pv\n")
         out_best.write("run,approach,group,fone,tp,fp,tn,fn,time,q,thresh,tpr,fpr,tnr,p,acc\n")
         out_all.write("run,approach,group,fone,tp,fp,tn,fn,time,q,thresh,tpr,fpr,tnr,p,acc\n")
@@ -812,7 +812,7 @@ elif args.mode == "online":
             run_online(ivs, processing_order, num_train, quantiles, run, args.grouping, args.approach, out_all, out_best, out_detail)
 elif args.mode == "supervised":
     # Be aware that this mode is experimental and does not yield good results
-    with open("results_supervised_best_" + args.grouping + ".csv", "w+") as out_best, open("results_supervised_all_" + args.grouping + ".csv", "w+") as out_all, open("results_supervised_confusion_" + args.grouping + ".csv", "w+") as out_c:
+    with open("results_supervised_best_" + args.approach + "_" + args.grouping + ".csv", "w+") as out_best, open("results_supervised_all_" + args.approach + "_" + args.grouping + ".csv", "w+") as out_all, open("results_supervised_confusion_" + args.approach + "_" + args.grouping + ".csv", "w+") as out_c:
         out_best.write("run,approach,group,fone,tp,fp,tn,fn,time,q,thresh,tpr,fpr,tnr,p,acc\n")
         out_all.write("run,approach,group,description,label,fone,tp,fp,tn,fn,time,q,thresh,tpr,fpr,tnr,p,acc\n")
         out_c.write("run,approach,group,pred,pred_class,actual,actual_class,cnt\n")
