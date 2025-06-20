@@ -4,3 +4,5 @@ tqdm
 matplotlib
 pandas
 pandasql
+torch
+scikit-learn

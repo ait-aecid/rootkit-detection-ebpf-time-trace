@@ -416,7 +416,29 @@ def get_model_ann(batches, feature_names):
     return model
 
 def get_model_svm(batches, feature_names):
-    pass
+    values = []
+    for batch in batches:
+        batch_medians = []
+        for name in feature_names:
+            if name in batch.intervals_time:
+                batch_medians.append(np.median(batch.intervals_time[name]))
+            else:
+                batch_medians.append(0)
+        values.append(batch_medians)
+    model = make_pipeline(StandardScaler(), OneClassSVM(kernel='rbf', nu=0.1, gamma='scale'))
+    model.fit(values)
+    return model
+
+def get_crits_svm(model, feature_names, test_batch):
+    crits = {}
+    batch_medians = []
+    for name in feature_names:
+        if name in test_batch.intervals_time:
+            batch_medians.append(np.median(test_batch.intervals_time[name]))
+        else:
+            batch_medians.append(0)
+    crits["svm"] = model.decision_function([batch_medians])
+    return crits
 
 def run_supervised(train, test, quantiles, run, grouping, approach, out_best, out_all, out_c):
     if approach == "ann":
@@ -641,10 +663,10 @@ def run_offline(train, test, quantiles, run, grouping, approach, out_best, out_a
                     if description not in crits[label][description_train]:
                         crits[label][description_train][description] = []
                     for i, test_batch in enumerate(test_batches):
-                        crits[label][description_train][description].append(get_crits_ann(model[description_train], centers[description], stds[description], feature_names_dict[description_train], test_batch))
+                        crits[label][description_train][description].append(get_crits_ann(model[description_train], centers[description_train], stds[description_train], feature_names_dict[description_train], test_batch))
     elif approach == "svm":
         # SVM detection
-        threshold_search_space = np.logspace(-30, 0, num=100)
+        threshold_search_space = np.concatenate([-np.logspace(1, -10, 50), np.logspace(-10, 1, 50)])
         model = {}
         feature_names_dict = {}
         for description, train_batches in train.items():
@@ -655,6 +677,20 @@ def run_offline(train, test, quantiles, run, grouping, approach, out_best, out_a
                         feature_names.append(name)
             feature_names_dict[description] = feature_names
             model[description] = get_model_svm(train_batches, feature_names)
+        crits = {}
+        for label in test:
+            for description_train in train:
+                # Interate through all training models
+               for description, test_batches in test[label].items():
+                    # For each training model, iterate through all test values
+                    if label not in crits:
+                        crits[label] = {}
+                    if description_train not in crits[label]:
+                        crits[label][description_train] = {}
+                    if description not in crits[label][description_train]:
+                        crits[label][description_train][description] = []
+                    for i, test_batch in enumerate(test_batches):
+                        crits[label][description_train][description].append(get_crits_svm(model[description_train], feature_names_dict[description_train], test_batch))
     else:
         # Shift detection
         threshold_search_space = np.logspace(-30, 0, num=100)
