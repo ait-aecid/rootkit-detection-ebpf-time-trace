@@ -395,7 +395,7 @@ def get_model_ann(batches, feature_names):
     model = DeepSetsEncoder()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     model.train()
-    epochs = 50
+    epochs = 100
     for epoch in tqdm(range(1, epochs + 1)):
         total_loss = 0
         optimizer.zero_grad()
@@ -606,7 +606,6 @@ def run_offline(train, test, quantiles, run, grouping, approach, out_best, out_a
                 stds[description] = normal_embeddings.std(dim=0)
         crits = {}
         for label in test:
-            print(label)
             for description_train in model:
                 # Interate through all training models
                 for description, test_batches in test[label].items():
