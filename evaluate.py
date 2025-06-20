@@ -24,7 +24,7 @@ parser.add_argument("--quantiles", "-q", default=9, help="Number of quantiles.",
 parser.add_argument("--repeat", "-r", default=1, help="Repeat experiment with different training samples multiple times (only in offline mode).", type=int)
 parser.add_argument("--mode", "-m", default="offline", choices=["offline", "supervised", "online"], help="Evaluate mode.", type=str)
 parser.add_argument("--grouping", "-g", default="fun", choices=["seq", "fun"], help="Grouping of events to interval either sequentially (independent of type and enter/return) or between enter and return of same function type.", type=str)
-parser.add_argument("--approach", "-a", default="shift", choices=["shift", "ann", "lumped"], help="Approach used for detection - shift is based on Landauer et al. (2025), ann is based on Luckett et al. (2016), lumped is based on Lu et al. (2019).")
+parser.add_argument("--approach", "-a", default="shift", choices=["shift", "ann", "svm"], help="Approach used for detection - shift is based on Landauer et al. (2025), ann is based on Luckett et al. (2016), svm is based on Lu et al. (2019).")
 parser.add_argument("--export_intervals", "-e", action="store_true", help="Write intervals to file (change interval grouping mode with --grouping parameter)")
 
 args = parser.parse_args()
@@ -66,6 +66,12 @@ if args.approach == "ann":
                 batch_embedding = torch.cat(feature_embeddings, dim=0)
                 batch_embeddings.append(batch_embedding)
             return torch.stack(batch_embeddings, dim=0)
+elif args.approach == "svm":
+    print("Loading sklearn (required for --approach svm)...")
+    from sklearn.svm import OneClassSVM
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.pipeline import make_pipeline
+    print("Loaded sklearn")
 
 random.seed(args.seed)
 
@@ -323,7 +329,7 @@ def get_quantile_vals(batches, quantiles):
                 num_obs[name] += len(interv_list)
     return vals, num_obs
 
-def get_crits(train_mean, train_var, train_cov_inv, train_num_obs, test_vals, test_num_obs, quantiles):
+def get_crits_shift(train_mean, train_var, train_cov_inv, train_num_obs, test_vals, test_num_obs, quantiles):
     crits = {}
     for name in train_mean:
         if name not in test_vals:
@@ -339,7 +345,7 @@ def get_crits(train_mean, train_var, train_cov_inv, train_num_obs, test_vals, te
         crits[name] = p_value
     return crits
 
-def get_stats(data, num_batches):
+def get_stats_shift(data, num_batches):
     mean = {}
     var = {}
     cov_inv = {}
@@ -409,21 +415,31 @@ def get_model_ann(batches, feature_names):
         tqdm.write(f"Epoch {epoch}: Avg Embedding Spread Loss = {total_loss / 100:.4f}")
     return model
 
+def get_model_svm(batches, feature_names):
+    pass
+
 def run_supervised(train, test, quantiles, run, grouping, approach, out_best, out_all, out_c):
-    train_num_obs = {}
-    train_mean = {}
-    train_var = {}
-    train_cov_inv = {}
-    descriptions = set()
-    for label, train_dict in train.items():
-        train_num_obs[label] = {}
-        train_mean[label] = {}
-        train_var[label] = {}
-        train_cov_inv[label] = {}
-        for description, train_batches in train_dict.items():
-            descriptions.add(description)
-            train_vals, train_num_obs[label][description] = get_quantile_vals(train_batches, quantiles)
-            train_mean[label][description], train_var[label][description], train_cov_inv[label][description] = get_stats(train_vals, len(train_batches))
+    if approach == "ann":
+        print("--approach ann not supported for --mode supervised)")
+        exit()
+    elif approach == "svm":
+        print("--approach svm not supported for --mode supervised)")
+        exit()
+    else:
+        train_num_obs = {}
+        train_mean = {}
+        train_var = {}
+        train_cov_inv = {}
+        descriptions = set()
+        for label, train_dict in train.items():
+            train_num_obs[label] = {}
+            train_mean[label] = {}
+            train_var[label] = {}
+            train_cov_inv[label] = {}
+            for description, train_batches in train_dict.items():
+                descriptions.add(description)
+                train_vals, train_num_obs[label][description] = get_quantile_vals(train_batches, quantiles)
+                train_mean[label][description], train_var[label][description], train_cov_inv[label][description] = get_stats_shift(train_vals, len(train_batches))
     pred_pos_act_pos, pred_neg_act_pos, pred_neg_act_neg, pred_pos_act_neg = {}, {}, {}, {}
     tp, fp, tn, fn = {}, {}, {}, {}
     start_time = time.time()
@@ -455,7 +471,7 @@ def run_supervised(train, test, quantiles, run, grouping, approach, out_best, ou
                 highest_pv = -1
                 for label_train, _ in train_mean.items():
                     for description_train in train_mean[label_train]:
-                        pv_dict = get_crits(train_mean[label_train][description_train], train_var[label_train][description_train], train_cov_inv[label_train][description_train], train_num_obs[label_train][description_train], test_vals, test_num_obs, quantiles)
+                        pv_dict = get_crits_shift(train_mean[label_train][description_train], train_var[label_train][description_train], train_cov_inv[label_train][description_train], train_num_obs[label_train][description_train], test_vals, test_num_obs, quantiles)
                         critical_value = sum(list(pv_dict.values()))
                         if critical_value > highest_pv:
                             best_label = label_train
@@ -505,40 +521,47 @@ def run_supervised(train, test, quantiles, run, grouping, approach, out_best, ou
     return avg
    
 def run_online(ivs, processing_order, num_train, quantiles, run, grouping, approach, out_all, out_best, out_detail):
-    train_batches = []
-    step = 0
-    crits = {}
-    for description in processing_order:
-        for label in [normal_key, rootkit_key]:
-            if label not in crits:
-                crits[label] = []
-            steps_since_label_change = 0
-            for batch in ivs[label][description]:
-                step += 1
-                steps_since_label_change += 1
-                if len(train_batches) < num_train:
-                    # For the first few batches, fill up the list of training batches
-                    train_batches.append(batch)
-                    out_detail.write(str(run) + "," + approach + "," + str(grouping) + "," + str(batch.timestamp) + "," + str(step) + "," + str(steps_since_label_change) + "," + str(label) + "," + str(description) + ",training_dummy," + str(len(quantiles)) + ",1\n")
-                    continue
-                # Test the current batch against the current list of training batches
-                train_vals, train_num_obs = get_quantile_vals(train_batches, quantiles)
-                train_mean, train_var, train_cov_inv = get_stats(train_vals, len(train_batches))
-                test_vals, test_num_obs = get_quantile_vals([batch], quantiles)
-                pv_dict = get_crits(train_mean, train_var, train_cov_inv, train_num_obs, test_vals, test_num_obs, quantiles)
-                for name, pv in pv_dict.items():
-                    out_detail.write(str(run) + "," + approach + "," + str(grouping) + "," + str(batch.timestamp) + "," + str(step) + "," + str(steps_since_label_change) + "," + str(label) + "," + str(description) + "," + str(name) + "," + str(len(quantiles)) + "," + str(pv) + "\n")
-                if steps_since_label_change == 1:
-                    # This batch is the first one with a new label; anomaly is expected
-                    crits[rootkit_key].append(pv_dict)
-                elif steps_since_label_change < num_train:
-                    # Training data consist of both normal and anomalous batches; do not change counts for this case
-                    pass
-                else:
-                    # Training data only consists of normal batches; no anomaly is expected
-                    crits[normal_key].append(pv_dict)
-                # Add batch to the list and remove oldest batch
-                train_batches = train_batches[1:] + [batch]
+    if approach == "ann":
+        print("--approach ann not supported for --mode online)")
+        exit()
+    elif approach == "svm":
+        print("--approach svm not supported for --mode online)")
+        exit()
+    else:
+        train_batches = []
+        step = 0
+        crits = {}
+        for description in processing_order:
+            for label in [normal_key, rootkit_key]:
+                if label not in crits:
+                    crits[label] = []
+                steps_since_label_change = 0
+                for batch in ivs[label][description]:
+                    step += 1
+                    steps_since_label_change += 1
+                    if len(train_batches) < num_train:
+                        # For the first few batches, fill up the list of training batches
+                        train_batches.append(batch)
+                        out_detail.write(str(run) + "," + approach + "," + str(grouping) + "," + str(batch.timestamp) + "," + str(step) + "," + str(steps_since_label_change) + "," + str(label) + "," + str(description) + ",training_dummy," + str(len(quantiles)) + ",1\n")
+                        continue
+                    # Test the current batch against the current list of training batches
+                    train_vals, train_num_obs = get_quantile_vals(train_batches, quantiles)
+                    train_mean, train_var, train_cov_inv = get_stats_shift(train_vals, len(train_batches))
+                    test_vals, test_num_obs = get_quantile_vals([batch], quantiles)
+                    pv_dict = get_crits_shift(train_mean, train_var, train_cov_inv, train_num_obs, test_vals, test_num_obs, quantiles)
+                    for name, pv in pv_dict.items():
+                        out_detail.write(str(run) + "," + approach + "," + str(grouping) + "," + str(batch.timestamp) + "," + str(step) + "," + str(steps_since_label_change) + "," + str(label) + "," + str(description) + "," + str(name) + "," + str(len(quantiles)) + "," + str(pv) + "\n")
+                    if steps_since_label_change == 1:
+                        # This batch is the first one with a new label; anomaly is expected
+                        crits[rootkit_key].append(pv_dict)
+                    elif steps_since_label_change < num_train:
+                        # Training data consist of both normal and anomalous batches; do not change counts for this case
+                        pass
+                    else:
+                        # Training data only consists of normal batches; no anomaly is expected
+                        crits[normal_key].append(pv_dict)
+                    # Add batch to the list and remove oldest batch
+                    train_batches = train_batches[1:] + [batch]
     best_metrics = {"fone": None, "tp": None, "fp": None, "tn": None, "fn": None, "time": None, "thresh": None, "name_counts": None}
     for thresh in np.logspace(-30, 0, num=100):
         start_time = time.time()
@@ -595,7 +618,8 @@ def run_offline(train, test, quantiles, run, grouping, approach, out_best, out_a
             feature_names = []
             for batch in train_batches_init:
                 for name in batch.intervals_time:
-                    feature_names.append(name)
+                    if name not in feature_names:
+                        feature_names.append(name)
             feature_names_dict[description] = feature_names
             # Compute model with initial batches
             model[description] = get_model_ann(train_batches_init, feature_names)
@@ -618,6 +642,19 @@ def run_offline(train, test, quantiles, run, grouping, approach, out_best, out_a
                         crits[label][description_train][description] = []
                     for i, test_batch in enumerate(test_batches):
                         crits[label][description_train][description].append(get_crits_ann(model[description_train], centers[description], stds[description], feature_names_dict[description_train], test_batch))
+    elif approach == "svm":
+        # SVM detection
+        threshold_search_space = np.logspace(-30, 0, num=100)
+        model = {}
+        feature_names_dict = {}
+        for description, train_batches in train.items():
+            feature_names = []
+            for batch in train_batches:
+                for name in batch.intervals_time:
+                    if name not in feature_names:
+                        feature_names.append(name)
+            feature_names_dict[description] = feature_names
+            model[description] = get_model_svm(train_batches, feature_names)
     else:
         # Shift detection
         threshold_search_space = np.logspace(-30, 0, num=100)
@@ -627,7 +664,7 @@ def run_offline(train, test, quantiles, run, grouping, approach, out_best, out_a
         train_cov_inv = {}
         for description, train_batches in train.items():
             train_vals, train_num_obs[description] = get_quantile_vals(train_batches, quantiles)
-            train_mean[description], train_var[description], train_cov_inv[description] = get_stats(train_vals, len(train_batches))
+            train_mean[description], train_var[description], train_cov_inv[description] = get_stats_shift(train_vals, len(train_batches))
         crits = {}
         for label in test:
             for description_train in train_mean:
@@ -642,7 +679,7 @@ def run_offline(train, test, quantiles, run, grouping, approach, out_best, out_a
                         crits[label][description_train][description] = []
                     for i, test_batch in enumerate(test_batches):
                         test_vals, test_num_obs = get_quantile_vals([test_batch], quantiles)
-                        crits[label][description_train][description].append(get_crits(train_mean[description_train], train_var[description_train], train_cov_inv[description_train], train_num_obs[description_train], test_vals, test_num_obs, quantiles))
+                        crits[label][description_train][description].append(get_crits_shift(train_mean[description_train], train_var[description_train], train_cov_inv[description_train], train_num_obs[description_train], test_vals, test_num_obs, quantiles))
     best_metrics = {"fone": None, "tp": None, "fp": None, "tn": None, "fn": None, "time": None, "thresh": None, "name_counts": None}
     for thresh in threshold_search_space:
         start_time = time.time()
