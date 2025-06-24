@@ -375,7 +375,7 @@ def get_crits_ann(model, center, std, feature_names, test_batch):
     with torch.no_grad():
         feature_tensor_list = intervals_to_tensors([test_batch], feature_names)
         embeddings = model(feature_tensor_list)
-        distances = torch.norm(embeddings - center, dim=1)
+        distances = torch.norm((embeddings - center) / std, dim=1)
         crits["ann"] = 1.0 / distances.tolist()[0]
     return crits
 
@@ -390,7 +390,7 @@ def intervals_to_tensors(batches, feature_names):
                 data = batch.intervals_time[name]
                 tensor = torch.tensor(data, dtype=torch.float32).unsqueeze(1)
             else:
-                tensor = torch.empty((0, 1), dtype=torch.float32)
+                tensor = torch.tensor([0], dtype=torch.float32).unsqueeze(1) # Use dummy value for missing feature
             feature_tensors.append(tensor)
         feature_tensor_list.append(feature_tensors)
     return feature_tensor_list
@@ -398,7 +398,7 @@ def intervals_to_tensors(batches, feature_names):
 def get_model_ann(batches, feature_names):
     feature_tensor_list = intervals_to_tensors(batches, feature_names)
     # Create and train neural network with normal batches
-    model = DeepSetsEncoder()
+    model = DeepSetsEncoder(num_features=len(feature_names))
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     model.train()
     epochs = 100
@@ -637,11 +637,11 @@ def run_offline(train, test, quantiles, run, grouping, approach, out_best, out_a
             train_batches_init = train_batches[:train_split]
             train_batches_opt = train_batches[train_split:]
             # Collect feature names so that they are always in order in the next steps
-            feature_names = []
-            for batch in train_batches_init:
-                for name in batch.intervals_time:
-                    if name not in feature_names:
-                        feature_names.append(name)
+            feature_names = set(train_batches_init[0].intervals_time.keys())
+            for batch in train_batches_init[1:]:
+                # Only use names that occur in all batches
+                feature_names &= set(batch.intervals_time.keys())
+            feature_names = list(feature_names)
             feature_names_dict[description] = feature_names
             # Compute model with initial batches
             model[description] = get_model_ann(train_batches_init, feature_names)
