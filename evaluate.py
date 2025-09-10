@@ -544,12 +544,100 @@ def run_supervised(train, test, quantiles, run, grouping, approach, out_best, ou
    
 def run_online(ivs, processing_order, num_train, quantiles, run, grouping, approach, out_all, out_best, out_detail):
     if approach == "ann":
-        print("--approach ann not supported for --mode online)")
-        exit()
+        # ANN detection
+        threshold_search_space = np.logspace(-30, 0, num=100)
+        opt_size = 0.5 # Fraction of training data to be used for center/std computation
+        train_batches = []
+        step = 0
+        crits = {}
+        for description in processing_order:
+            for label in [normal_key, rootkit_key]:
+                if label not in crits:
+                    crits[label] = []
+                steps_since_label_change = 0
+                for batch in ivs[label][description]:
+                    step += 1
+                    steps_since_label_change += 1
+                    if len(train_batches) < num_train:
+                        # For the first few batches, fill up the list of training batches
+                        train_batches.append(batch)
+                        out_detail.write(str(run) + "," + approach + "," + str(grouping) + "," + str(batch.timestamp) + "," + str(step) + "," + str(steps_since_label_change) + "," + str(label) + "," + str(description) + ",training_dummy," + str(len(quantiles)) + ",1\n")
+                        continue
+                    # Test the current batch against the current list of training batches
+                    train_split = round(len(train_batches) * (1 - opt_size))
+                    train_batches_init = train_batches[:train_split]
+                    train_batches_opt = train_batches[train_split:]
+                    # Collect feature names so that they are always in order in the next steps
+                    feature_names = set(train_batches_init[0].intervals_time.keys())
+                    for train_batch in train_batches_init[1:]:
+                        # Only use names that occur in all batches
+                        feature_names &= set(train_batch.intervals_time.keys())
+                    feature_names = list(feature_names)
+                    # Compute model with initial batches
+                    model = get_model_ann(train_batches_init, feature_names)
+                    with torch.no_grad():
+                        # Compute model statistics with opt batches
+                        normal_embeddings = model(intervals_to_tensors(train_batches_opt, feature_names))
+                        centers = normal_embeddings.mean(dim=0)
+                        stds = normal_embeddings.std(dim=0)
+                        # Compute p values of test batch
+                        pv_dict = get_crits_ann(model, centers, stds, feature_names, batch)
+                    for name, pv in pv_dict.items():
+                        out_detail.write(str(run) + "," + approach + "," + str(grouping) + "," + str(batch.timestamp) + "," + str(step) + "," + str(steps_since_label_change) + "," + str(label) + "," + str(description) + "," + str(name) + "," + str(len(quantiles)) + "," + str(pv) + "\n")
+                    if steps_since_label_change == 1:
+                        # This batch is the first one with a new label; anomaly is expected
+                        crits[rootkit_key].append(pv_dict)
+                    elif steps_since_label_change < num_train:
+                        # Training data consist of both normal and anomalous batches; do not change counts for this case
+                        pass
+                    else:
+                        # Training data only consists of normal batches; no anomaly is expected
+                        crits[normal_key].append(pv_dict)
+                    # Add batch to the list and remove oldest batch
+                    train_batches = train_batches[1:] + [batch]
     elif approach == "svm":
-        print("--approach svm not supported for --mode online)")
-        exit()
+        # SVM detection
+        threshold_search_space = np.concatenate([-np.logspace(1, -10, 50), np.logspace(-10, 1, 50)])
+        train_batches = []
+        step = 0
+        crits = {}
+        for description in processing_order:
+            for label in [normal_key, rootkit_key]:
+                if label not in crits:
+                    crits[label] = []
+                steps_since_label_change = 0
+                for batch in ivs[label][description]:
+                    step += 1
+                    steps_since_label_change += 1
+                    if len(train_batches) < num_train:
+                        # For the first few batches, fill up the list of training batches
+                        train_batches.append(batch)
+                        out_detail.write(str(run) + "," + approach + "," + str(grouping) + "," + str(batch.timestamp) + "," + str(step) + "," + str(steps_since_label_change) + "," + str(label) + "," + str(description) + ",training_dummy," + str(len(quantiles)) + ",1\n")
+                        continue
+                    # Test the current batch against the current list of training batches
+                    feature_names = []
+                    for train_batch in train_batches:
+                        for name in train_batch.intervals_time:
+                            if name not in feature_names:
+                                feature_names.append(name)
+                    model = get_model_svm(train_batches, feature_names)
+                    pv_dict = get_crits_svm(model, feature_names, batch)
+                    for name, pv in pv_dict.items():
+                        out_detail.write(str(run) + "," + approach + "," + str(grouping) + "," + str(batch.timestamp) + "," + str(step) + "," + str(steps_since_label_change) + "," + str(label) + "," + str(description) + "," + str(name) + "," + str(len(quantiles)) + "," + str(pv) + "\n")
+                    if steps_since_label_change == 1:
+                        # This batch is the first one with a new label; anomaly is expected
+                        crits[rootkit_key].append(pv_dict)
+                    elif steps_since_label_change < num_train:
+                        # Training data consist of both normal and anomalous batches; do not change counts for this case
+                        pass
+                    else:
+                        # Training data only consists of normal batches; no anomaly is expected
+                        crits[normal_key].append(pv_dict)
+                    # Add batch to the list and remove oldest batch
+                    train_batches = train_batches[1:] + [batch]
     else:
+        # Shift detection
+        threshold_search_space = np.logspace(-30, 0, num=100)
         train_batches = []
         step = 0
         crits = {}
@@ -585,7 +673,7 @@ def run_online(ivs, processing_order, num_train, quantiles, run, grouping, appro
                     # Add batch to the list and remove oldest batch
                     train_batches = train_batches[1:] + [batch]
     best_metrics = {"fone": None, "tp": None, "fp": None, "tn": None, "fn": None, "time": None, "thresh": None, "name_counts": None}
-    for thresh in np.logspace(-30, 0, num=100):
+    for thresh in threshold_search_space:
         start_time = time.time()
         tp, fp, tn, fn = 0, 0, 0, 0
         for label in crits:
