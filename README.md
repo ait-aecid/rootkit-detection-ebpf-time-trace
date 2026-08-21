@@ -1,7 +1,9 @@
 # Rootkit Detection with eBPF Time Tracing
 
-This repository contains code to collect time measurements of kernel functions that are manipulated by rootkits when they hide files, as well as a semi-supervised detection method that analyzes shifts of kernel function execution times. This implementation relies on the open-source rootkit [CARAXES](https://github.com/ait-aecid/caraxes), which wraps the filldir function to manipulate the outcomes of file enumerations, e.g., when executing the `ls` command. Time measurements are taken from several functions in the getdents system call (including filldir) using eBPF probes. For detection we apply a simple machine learning model based on statistical testing. We refer to the following publication for detailed explanations of data collection and anomaly detection mechanisms. If you use any of the resources provided in this repository, please cite the following publication:
-* Landauer, M., Alton, L., Lindorfer, M., Skopik, F., Wurzenberger, M., & Hotwagner, W. (2025). Trace of the Times: Rootkit Detection through Temporal Anomalies in Kernel Activity. Under Review.
+This repository contains code to collect time measurements of kernel functions that are manipulated by rootkits when they hide files, as well as a semi-supervised detection method that analyzes shifts of kernel function execution times. This implementation relies on the open-source rootkit [CARAXES](https://github.com/ait-aecid/caraxes), which wraps the filldir function to manipulate the outcomes of file enumerations, e.g., when executing the `ls` command. Time measurements are taken from several functions in the getdents system call (including filldir) using eBPF probes. For detection we apply a simple machine learning model based on statistical testing. We refer to the following publication for detailed explanations of data collection and anomaly detection mechanisms. 
+
+**If you use any of the resources provided in this repository, please cite the following publication:**
+* Landauer, M., Alton, L., Lindorfer, M., Skopik, F., Wurzenberger, M., & Hotwagner, W. (2025). [Trace of the Times: Rootkit Detection through Temporal Anomalies in Kernel Activity](https://doi.org/10.1145/3770085). Digital Threats: Research and Practice. \[[PDF](https://dl.acm.org/doi/pdf/10.1145/3770085)\]
 
 ## Rootkit and eBPF probing
 
